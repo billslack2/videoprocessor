@@ -1801,6 +1801,63 @@ namespace VideoProcessorTest
             Assert::AreEqual(1910,change.presentation.sourceBounds.bottom);
         }
 
+        TEST_METHOD(OptionalReleasedS1604PreservesMatchedBroadAttachedStrokes)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t size=0;
+            _dupenv_s(&value,&size,"VP_8838_INCIDENT_REPLAY_DIR");
+            const std::string dir=value ? value : ""; std::free(value);
+            if (dir.empty()) {
+                Logger::WriteMessage(L"Set VP_8838_INCIDENT_REPLAY_DIR to the 8838 matte-incidents folder.");
+                return;
+            }
+            WIN32_FIND_DATAA entry={};
+            HANDLE search=FindFirstFileA((dir+"\\*-g1-s1604-*.bin").c_str(),&entry);
+            Assert::IsTrue(search!=INVALID_HANDLE_VALUE);
+            const std::string bin=dir+"\\"+entry.cFileName;
+            Assert::IsFalse(FindNextFileA(search,&entry),L"The captured source must be unambiguous.");
+            FindClose(search);
+            std::ifstream meta(bin.substr(0,bin.size()-4)+".txt");
+            int w,h,format,encoding,colorspace,top,bottom,hint,range;
+            size_t pitch,uvPitch; std::string tag;
+            uint64_t generation,sequence,number,timestamp,formatGeneration,viewport,renderer,domain,policy,continuity;
+            int nearBar,optimization,duration,discontinuity,repeat,alignment;
+            meta>>w>>h>>pitch>>uvPitch>>format>>encoding>>colorspace>>top>>bottom>>hint>>range
+                >>tag>>generation>>sequence>>number>>timestamp>>formatGeneration>>viewport>>renderer>>domain
+                >>policy>>continuity>>nearBar>>optimization>>duration>>discontinuity>>repeat>>alignment;
+            Assert::IsTrue(bool(meta) && tag=="identity_v1" && generation==1 && sequence==1604);
+            Assert::AreEqual(3840,w); Assert::AreEqual(2160,h); Assert::AreEqual(size_t(7680),pitch);
+            Assert::AreEqual(pitch,uvPitch); Assert::AreEqual(int(AnalysisLumaFormat::P010),format);
+            Assert::AreEqual(260,top); Assert::AreEqual(1898,bottom);
+            P010Frame original(3840,2160);
+            std::ifstream data(bin,std::ios::binary|std::ios::ate); Assert::IsTrue(bool(data));
+            Assert::IsTrue(data.tellg()==std::streamoff(original.bytes.size()));
+            data.seekg(0); data.read(reinterpret_cast<char*>(original.bytes.data()),std::streamsize(original.bytes.size()));
+            Assert::IsTrue(bool(data));
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            // Exact donor is unchanged on disk. The broad strokes below are
+            // modeled marks, not an assertion about the recorded picture.
+            for (int left : {800,1500}) for (int width : {64,128}) {
+                auto marked=original;
+                for (int x=left;x<left+width;++x) for (int y=1902;y<=1904;++y)
+                    WriteCode(marked.bytes.data()+size_t(y)*marked.pitch+2*x, y==1902?143:y==1903?136:126);
+                const int stem=left+width/2;
+                for (int x=stem;x<stem+4;++x) for (int y=1896;y<=1901;++y)
+                    WriteCode(marked.bytes.data()+size_t(y)*marked.pitch+2*x,143);
+                auto source=marked.P010Source(); source.range=AnalysisLumaRange::Limited;
+                const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                Assert::IsTrue(evidence.visibleBottom.nativePixelDetail,
+                    L"The source has a native positive witness; the released baseline may report the original point.");
+                auto input=RaisedBroadcastCropInput(native,evidence,1604);
+                auto selected=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+                ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,1604);
+                const auto actual=selected.presentation.sourceBounds;
+                Assert::IsTrue(!selected.presentation.applyCrop ||
+                    (actual.left<=left && actual.right>=left+width && actual.top<=1896 && actual.bottom>=1905),
+                    L"Final admitted current-source bounds must preserve the whole modeled stroke.");
+            }
+        }
+
         TEST_METHOD(OptionalF648ExactSourceRolesAndResets)
         {
             using namespace AlphaSourceCrop;
