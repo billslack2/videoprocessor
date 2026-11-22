@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0238`
-- Next root story number: `VP-0239`
-- Total indexed items: 255
+- Last assigned root story: `VP-0239`
+- Next root story number: `VP-0240`
+- Total indexed items: 256
 
 ## Story locations
 
@@ -301,6 +301,7 @@ they must not contain requirements that are absent from this file.
 | VP-0236 | Backlog | Review NLS across aspect-ratio changes with subtitles enabled |
 | VP-0237 | Backlog | Investigate and reduce late subtitle appearance at 23.976 fps |
 | VP-0238 | Backlog | Qualify direct Magewell P010 capture and delivery to madVR at UHD 59.94 |
+| VP-0239 | Backlog | Stabilize raised-matte framing on compressed YTTV content |
 
 ## Codex story workflow
 
