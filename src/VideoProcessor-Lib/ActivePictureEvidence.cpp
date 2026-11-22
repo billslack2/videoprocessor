@@ -1027,7 +1027,8 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
         return false;
     int previous = ref.luma, drops = 0, reboundLobes = 0, reboundRise = 0, equal = 0;
     int pictureRise = 0, pictureRiseLimit = 0, notchRow = -1;
-    bool rising = false;
+    int lobeStartRow = -1, lobeBase = 0;
+    bool rising = false, pictureRegionRequired = false;
     for (int row=reference-inward; row!=y-inward; row-=inward) {
         AnalysisLumaSample next;
         if (!samples.Sample(x,row,next)) return false;
@@ -1049,7 +1050,7 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
             if (!pictureRiseLimit) {
                 const int outerDistance = std::min(depth-1,
                     std::min(32,std::max(2,samples.source.height/96))+8);
-                if (outerDistance <= distance) return false;
+                if (outerDistance <= distance) pictureRegionRequired=true;
                 const int outerRow = boundary-inward*outerDistance;
                 int deviations[5], count=0;
                 for (int offset : {-32,-16,0,16,32}) {
@@ -1062,30 +1063,74 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
                         std::abs(int(v.chromaV)-512)>16 || deviation>16) continue;
                     deviations[count++]=deviation;
                 }
-                if (count<3) return false;
-                std::sort(deviations,deviations+count);
-                const int noise = deviations[count/2];
-                const int contrastLimit = std::max(4,std::min(16,contrast/16));
-                pictureRiseLimit = std::min(contrastLimit,4+2*noise);
+                if (count<3) {
+                    pictureRegionRequired=true;
+                    pictureRiseLimit=1;
+                } else {
+                    std::sort(deviations,deviations+count);
+                    const int noise = deviations[count/2];
+                    const int contrastLimit = std::max(4,std::min(16,contrast/16));
+                    pictureRiseLimit = std::min(contrastLimit,4+2*noise);
+                }
             }
             pictureRise += delta;
-            if (pictureRise > pictureRiseLimit) return false;
+            if (pictureRise > pictureRiseLimit) pictureRegionRequired=true;
             rising = false;
         } else if (delta > 0) {
-            if (!rising) { ++reboundLobes; reboundRise=0; }
+            if (!rising) { ++reboundLobes; reboundRise=0; lobeStartRow=row+inward; lobeBase=previous; }
             rising=true;
             reboundRise+=delta;
             if (reboundLobes>1 || reboundRise>contrast/8 ||
                 (boundary-row)*inward>8) return false;
         } else if (delta < 0) rising=false;
-        if (delta < -4) ++drops;
+        if (delta < -4 && (boundary-row)*inward>0) ++drops;
         if (delta == 0 && (equal++ >= 1) && (boundary-row)*inward>0) return false;
         if (delta != 0) equal=0;
         previous=next.luma;
     }
     if (drops < 2) return false;
     int regionalTailSupport=0;
-    if (notchRow >= 0) {
+    int regionalNotch=notchRow, regionalMatte=matte;
+    if (pictureRegionRequired && regionalNotch < 0 && reboundLobes==1 && lobeStartRow>=0) {
+        // A filtered edge can raise the nearby matte itself. Qualify the
+        // local lobe minimum against neutral samples on that same source row,
+        // instead of comparing it only to a frame-wide black reference.
+        int levels[5], count=0;
+        for (int offset : {-32,-16,0,16,32}) {
+            const int nx=x+offset;
+            if (nx<0 || nx>=samples.source.width) continue;
+            AnalysisLumaSample v;
+            if (!samples.Sample(nx,lobeStartRow,v)) return false;
+            if (std::abs(int(v.chromaU)-512)<=16 && std::abs(int(v.chromaV)-512)<=16)
+                levels[count++]=v.luma;
+        }
+        if (count>=3) {
+            std::sort(levels,levels+count);
+            const int local=levels[count/2];
+            if (std::abs(lobeBase-local)<=4) { regionalNotch=lobeStartRow; regionalMatte=local; }
+        }
+    }
+    if (pictureRegionRequired && regionalNotch < 0) {
+        // Texture inside the picture is not edge authority. If it exceeds
+        // the local matte noise allowance, require independent same-frame
+        // neighboring columns to support this actual edge descent instead.
+        const int radius=std::min(16,std::max(4,samples.source.width/480));
+        const int tolerance=std::max(4,std::min(16,contrast/16));
+        int support=0; bool left=false,right=false;
+        for (int nx=std::max(0,x-radius);nx<=std::min(samples.source.width-1,x+radius);++nx) {
+            if (nx==x) continue;
+            AnalysisLumaSample edge,peak,inside,outside;
+            if (!samples.Sample(nx,boundary,edge) || !samples.Sample(nx,y,peak) ||
+                !samples.Sample(nx,y+inward,inside) || !samples.Sample(nx,y-inward,outside)) return false;
+            if (edge.luma<matte+24 || edge.luma<=peak.luma ||
+                std::abs(int(peak.luma)-int(pixel.luma))>tolerance ||
+                inside.luma<peak.luma || outside.luma>=peak.luma ||
+                std::abs(int(peak.chromaU)-512)>16 || std::abs(int(peak.chromaV)-512)>16) continue;
+            ++support; left |= nx<x; right |= nx>x;
+        }
+        if (support<3 || !left || !right) return false;
+    }
+    if (regionalNotch >= 0) {
         // A localized compression lobe can be asymmetric and vary across
         // columns. Inspect a bounded current-source region: both sides must
         // contain several neutral columns with a matte-level notch, a rise
@@ -1097,10 +1142,10 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
         for (int nx=std::max(0,x-radius);nx<=std::min(samples.source.width-1,x+radius);++nx) {
             if (nx==x) continue;
             AnalysisLumaSample low, peak, before, after, picture;
-            if (!samples.Sample(nx,notchRow,low) || !samples.Sample(nx,y,peak) ||
+            if (!samples.Sample(nx,regionalNotch,low) || !samples.Sample(nx,y,peak) ||
                 !samples.Sample(nx,y+inward,before) || !samples.Sample(nx,y-inward,after) ||
                 !samples.Sample(nx,reference,picture)) return false;
-            if (std::abs(int(low.luma)-matte)>8 || int(peak.luma)-matte<minimumSignal ||
+            if (std::abs(int(low.luma)-regionalMatte)>8 || int(peak.luma)-matte<minimumSignal ||
                 peak.luma < before.luma || peak.luma < after.luma || picture.luma<matte+24 ||
                 std::abs(int(low.chromaU)-512)>16 || std::abs(int(low.chromaV)-512)>16 ||
                 std::abs(int(peak.chromaU)-512)>16 || std::abs(int(peak.chromaV)-512)>16) continue;
@@ -1127,7 +1172,7 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
             // and one more current neutral matte row before accepting it.
             AnalysisLumaSample beyond;
             const int row=y-inward*(k+1);
-            if (notchRow<0 || k!=2 || regionalTailSupport<3 || row<0 || row>=samples.source.height ||
+            if (regionalNotch<0 || k!=2 || regionalTailSupport<3 || row<0 || row>=samples.source.height ||
                 std::abs(int(next.luma)-matte)>4 || !samples.Sample(x,row,beyond) ||
                 std::abs(int(beyond.luma)-matte)>4 ||
                 std::abs(int(beyond.chromaU)-512)>16 || std::abs(int(beyond.chromaV)-512)>16) return false;
