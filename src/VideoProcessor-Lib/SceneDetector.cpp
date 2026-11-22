@@ -73,6 +73,10 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 	Signature current;
 	uint64_t totalLuma = 0;
 	size_t darkSampleCount = 0;
+	// Limited-range black is code 64. Footroom samples below it count in
+	// black's histogram bin, so noise under black cannot move between bins.
+	const uint16_t blackFloor = static_cast<uint16_t>(
+		source && source->range == AnalysisLumaRange::Limited ? 64 : 0);
 	for (size_t row = 0; row < Signature::ROWS; ++row)
 	{
 		const size_t y = ((row * 2 + 1) * input.height) / (Signature::ROWS * 2);
@@ -98,7 +102,8 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 			}
 			const size_t index = row * Signature::COLUMNS + column;
 			current.luma[index] = luma;
-			current.histogram[std::min<size_t>(luma / 64, Signature::HISTOGRAM_BINS - 1)]++;
+			current.histogram[std::min<size_t>(
+				std::max(luma, blackFloor) / 64, Signature::HISTOGRAM_BINS - 1)]++;
 			totalLuma += luma;
 			if (luma <= 112)
 				++darkSampleCount;
