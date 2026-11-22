@@ -9,6 +9,8 @@
 #include "SceneDetector.h"
 
 
+struct OriginalPixelExteriorEvidence;
+
 namespace AlphaSourceCrop
 {
 	// Measurement equivalence, not new aspect authority. The caller must supply
@@ -337,6 +339,9 @@ namespace AlphaSourceCrop
 		bool previousOwnsCurrentAnalysis = false;
 		// Set only after eligible retiring-owner inspection completed on this frame.
 		bool retiringTranslationFitInspection = false;
+        // Classic: a fresh two-bar observation overrides a held translation
+        // immediately so newly visible opposite-bar pixels are not clipped.
+        bool protectCurrentBothEdges = false;
 	};
 
 	bool IsVerticalBarPresentationActive(
@@ -1452,6 +1457,20 @@ namespace AlphaSourceCrop
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
 	};
 
+
+    // Presentation-only arbitration of an already proposed Classic shift and
+    // current native bar evidence. Never creates native picture authority.
+    struct ClassicOriginalBarPresentationInput
+    {
+        const Input* crop = nullptr;
+        Decision proposed;
+        const OriginalPixelExteriorEvidence* evidence = nullptr;
+        ActivePictureBounds proofBase;
+        ActivePictureFrameIdentity currentIdentity, proofIdentity;
+        uint64_t policyGeneration = 0, proofPolicyGeneration = 0;
+        uint64_t continuityGeneration = 0, proofContinuityGeneration = 0;
+    };
+    Decision ResolveClassicOriginalBarPresentation(const ClassicOriginalBarPresentationInput& input);
 
 	// Tracks the logical contract of an actually applied crop, independently of
 	// temporary full-raster withdrawals and of diagnostic logging.

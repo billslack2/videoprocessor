@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "AlphaSourceCropPolicy.h"
+#include "OriginalPixelExteriorEvidence.h"
 
 #include <cmath>
 
@@ -546,6 +547,14 @@ namespace AlphaSourceCrop
                 return observed;
             const float lower = current->lowerContent ? current->lowerRequiredShift : 0.0f;
             const float upper = current->upperContent ? current->upperRequiredShift : 0.0f;
+            // Both bars contain current pixels. A one-sided translation would
+            // remove the opposite bar, so fit their complete source envelope.
+            if (current->upperContent && current->lowerContent &&
+                upper > 0.5f && lower > 0.5f) {
+                observed.action = VerticalBarPresentationAction::FIT;
+                observed.translationPixels = 0.0f;
+                return observed;
+            }
             observed.action = VerticalBarPresentationAction::NONE;
             observed.translationPixels = 0.0f;
             if (lower > 0.5f)
@@ -1461,7 +1470,8 @@ namespace AlphaSourceCrop
 		{
 			if (previousOwnsSample &&
 				state.action == VerticalBarPresentationAction::TRANSLATE &&
-				input.translationEnabled)
+				input.translationEnabled &&
+                !(input.protectCurrentBothEdges && input.upperContent && input.lowerContent))
 			{
 				return state;
 			}
@@ -5816,6 +5826,71 @@ namespace AlphaSourceCrop
             (!t.nativePixelDetail || (t.nativePixelY >= top && t.nativePixelY < bottom)) &&
             (!b.nativePixelDetail || (b.nativePixelY >= top && b.nativePixelY < bottom)) &&
             !evidence.visibleLeft.available && !evidence.visibleRight.available;
+    }
+
+    Decision ResolveClassicOriginalBarPresentation(const ClassicOriginalBarPresentationInput& input)
+    {
+        Decision fallback;
+        if (!input.crop) { fallback.reason="Classic current source unavailable"; return fallback; }
+        const auto& crop=*input.crop;
+        const auto& base=crop.geometry;
+        fallback.sourceBounds=FullRaster(crop.rasterWidth,crop.rasterHeight);
+        fallback.reason="Classic current bar proof unavailable";
+        const auto& current=input.currentIdentity;
+        if (!crop.automaticCropEnabled || !crop.sharedGeometryAvailable ||
+            crop.fullRasterPresentationAuthoritative || crop.presentationFailOpen ||
+            crop.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+            !crop.frameSourceGeneration || !crop.frameSourceSequence ||
+            crop.geometrySourceGeneration!=crop.frameSourceGeneration ||
+            current.transportGeneration!=crop.frameSourceGeneration ||
+            current.acceptedSequence!=crop.frameSourceSequence ||
+            !current.sourceFormatGeneration || !current.analysisDomainKey ||
+            !input.policyGeneration || !input.continuityGeneration ||
+            input.policyGeneration!=input.proofPolicyGeneration ||
+            input.continuityGeneration!=input.proofContinuityGeneration ||
+            !SameAnalysisFrameIdentity(current,input.proofIdentity) ||
+            !SameTrustedCropContract(base,input.proofBase) ||
+            !ValidBounds(base,crop.rasterWidth,crop.rasterHeight) ||
+            !CropEdgesAreChromaAligned(base,crop.rasterWidth,crop.rasterHeight) ||
+            base.left!=0 || base.right!=crop.rasterWidth ||
+            base.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            !input.evidence || !input.evidence->complete || !input.proposed.applyCrop)
+            return fallback;
+        const auto& e=*input.evidence;
+        const auto& b=e.bounds;
+        if (!ValidBounds(b,crop.rasterWidth,crop.rasterHeight) ||
+            !CropEdgesAreChromaAligned(b,crop.rasterWidth,crop.rasterHeight) ||
+            b.left!=0 || b.right!=crop.rasterWidth || !ContainedBounds(b,base) ||
+            (e.upperDetail && (e.upperX<0 || e.upperX>=crop.rasterWidth || e.upperY<0 ||
+                e.upperY>=base.top || e.upperY<b.top)) ||
+            (e.lowerDetail && (e.lowerX<0 || e.lowerX>=crop.rasterWidth || e.lowerY<base.bottom ||
+                e.lowerY>=crop.rasterHeight || e.lowerY>=b.bottom)))
+            return fallback;
+        const auto& proposed=input.proposed;
+        const auto& p=proposed.sourceBounds;
+        const bool classicShift=proposed.owner==DecisionOwner::VERTICAL_TRANSLATION &&
+            proposed.verticallyTranslated && proposed.verticalTranslationPixels>0 &&
+            crop.verticalTranslationActive && crop.verticalTranslationSourceGeneration==crop.frameSourceGeneration &&
+            SameTrustedCropContract(crop.verticalTranslationBase,base) &&
+            proposed.verticalTranslationPixels==std::min(ChromaAlignedDisplacement(crop.verticalTranslationPixels),
+                crop.rasterHeight-base.bottom) &&
+            ValidBounds(p,crop.rasterWidth,crop.rasterHeight) &&
+            CropEdgesAreChromaAligned(p,crop.rasterWidth,crop.rasterHeight) &&
+            p.left==base.left && p.right==base.right &&
+            p.top==base.top+proposed.verticalTranslationPixels &&
+            p.bottom==base.bottom+proposed.verticalTranslationPixels;
+        if (classicShift && e.lowerDetail && !e.upperDetail &&
+            e.lowerY>=p.top && e.lowerY<p.bottom)
+            return proposed;
+        // Preserve every independently observed bar pixel together with the
+        // entire native picture. Full-raster is the safe fit at the outer edge.
+        if (SameBounds(b,fallback.sourceBounds)) return fallback;
+        Decision fit;
+        fit.applyCrop=true; fit.outwardExpanded=!SameBounds(b,base);
+        fit.owner=fit.outwardExpanded?DecisionOwner::OUTWARD_FIT:DecisionOwner::TRUSTED_CROP;
+        fit.sourceBounds=b;
+        fit.reason="Classic current original picture and bar content fit";
+        return fit;
     }
 
     static Decision RaisedMatteMargin(const Input& input, const char* reason)

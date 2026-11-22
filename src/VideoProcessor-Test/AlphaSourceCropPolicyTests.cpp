@@ -8,6 +8,7 @@
 #include <vector>
 #include <limits>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/OriginalPixelExteriorEvidence.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <NlsGeometryPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
@@ -6294,6 +6295,11 @@ namespace Tests
                 content.topTranslationHeld = topFirst;
                 auto decision = SelectVerticalBarContentPresentation(
                     EvaluateVerticalBarContent(content), true, &content, true);
+                if (topFirst) {
+                    Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FIT), static_cast<int>(decision.action));
+                    Assert::AreEqual(0.0f, decision.translationPixels, 0.001f);
+                    continue;
+                }
                 Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::TRANSLATE), static_cast<int>(decision.action));
                 Assert::AreEqual(384.0f, decision.translationPixels, 0.001f);
                 VerticalTranslationConfirmationState previous;
@@ -6331,6 +6337,94 @@ namespace Tests
             content.upperPeakSamples = 0;
             Assert::AreEqual(static_cast<int>(VerticalBarPresentationAction::FAIL_OPEN), static_cast<int>(
                 SelectVerticalBarContentPresentation(EvaluateVerticalBarContent(content), true, &content, true).action));
+        }
+
+        TEST_METHOD(ClassicTranslationRequiresExactCurrentOriginalBarProof)
+        {
+            auto crop=TrustedScopeCrop();
+            crop.geometry.top=260; crop.geometry.bottom=1898;
+            crop.geometry.aspectRatio=3840.0/1638.0;
+            crop.frameSourceSequence=100; crop.verticalTranslationActive=true;
+            crop.verticalTranslationPixels=216; crop.verticalTranslationBase=crop.geometry;
+            crop.verticalTranslationSourceGeneration=crop.frameSourceGeneration;
+            auto translated=Evaluate(crop);
+            Assert::IsTrue(translated.applyCrop && translated.verticallyTranslated);
+            Assert::AreEqual(476,translated.sourceBounds.top);
+            Assert::AreEqual(2114,translated.sourceBounds.bottom);
+            OriginalPixelExteriorEvidence proof;
+            proof.complete=true; proof.lowerDetail=true; proof.lowerX=1500; proof.lowerY=2062;
+            proof.bounds=crop.geometry; proof.bounds.bottom=2064;
+            proof.bounds.aspectRatio=3840.0/(2064-260);
+            ClassicOriginalBarPresentationInput in;
+            in.crop=&crop; in.proposed=translated; in.evidence=&proof; in.proofBase=crop.geometry;
+            in.currentIdentity.transportGeneration=crop.frameSourceGeneration;
+            in.currentIdentity.acceptedSequence=crop.frameSourceSequence;
+            in.currentIdentity.sourceFormatGeneration=11; in.currentIdentity.analysisDomainKey=13;
+            in.currentIdentity.viewportGeneration=5; in.proofIdentity=in.currentIdentity;
+            in.policyGeneration=in.proofPolicyGeneration=3;
+            in.continuityGeneration=in.proofContinuityGeneration=4;
+            auto decision=ResolveClassicOriginalBarPresentation(in);
+            Assert::IsTrue(decision.applyCrop && decision.verticallyTranslated);
+            Assert::AreEqual(476,decision.sourceBounds.top);
+            Assert::AreEqual(2114,decision.sourceBounds.bottom);
+            proof.upperDetail=true; proof.upperX=1500; proof.upperY=205;
+            proof.bounds.top=204; proof.bounds.aspectRatio=3840.0/(2064-204);
+            decision=ResolveClassicOriginalBarPresentation(in);
+            Assert::IsTrue(decision.applyCrop && !decision.verticallyTranslated && decision.outwardExpanded);
+            Assert::AreEqual(204,decision.sourceBounds.top);
+            Assert::AreEqual(2064,decision.sourceBounds.bottom);
+            // No proof may be imported from a skipped/older source or reset context.
+            for (uint64_t sequence=101;sequence<=160;++sequence) {
+                crop.frameSourceSequence=sequence; in.currentIdentity.acceptedSequence=sequence;
+                decision=ResolveClassicOriginalBarPresentation(in);
+                Assert::IsFalse(decision.applyCrop);
+                in.proofIdentity=in.currentIdentity;
+                decision=ResolveClassicOriginalBarPresentation(in);
+                Assert::IsTrue(decision.applyCrop && !decision.verticallyTranslated);
+            }
+            in.proofContinuityGeneration++;
+            Assert::IsFalse(ResolveClassicOriginalBarPresentation(in).applyCrop);
+            in.proofContinuityGeneration=in.continuityGeneration;
+            proof.complete=false;
+            Assert::IsFalse(ResolveClassicOriginalBarPresentation(in).applyCrop);
+        }
+
+        TEST_METHOD(ClassicCurrentBothBarsOverrideHeldTranslationAcrossSkippedFrames)
+        {
+            VerticalBarContentInput content;
+            content.lowerContent=true; content.lowerOccupiedDepth=24;
+            content.lowerPeakSamples=100; content.lowerBarPixels=262;
+            content.upperBarPixels=260; content.sampledColumns=1800;
+            content.lowerRequiredShift=196.0f;
+            const auto lower=SelectVerticalBarContentPresentation(
+                EvaluateVerticalBarContent(content),true,&content,true);
+            Assert::AreEqual(int(VerticalBarPresentationAction::TRANSLATE),int(lower.action));
+            VerticalBarPresentationUpdateInput update;
+            update.current=lower; update.lowerContent=true; update.lowerContentBottom=2062;
+            update.currentTick=1000; update.currentSourceSequence=1; update.holdMs=2000;
+            update.translationEnabled=true;
+            auto state=UpdateVerticalBarPresentation(update);
+            Assert::AreEqual(int(VerticalBarPresentationAction::TRANSLATE),int(state.action));
+            content.upperContent=true; content.upperOccupiedDepth=12;
+            content.upperPeakSamples=100; content.upperRequiredShift=56.0f;
+            const auto both=SelectVerticalBarContentPresentation(
+                EvaluateVerticalBarContent(content),true,&content,true);
+            Assert::AreEqual(int(VerticalBarPresentationAction::FIT),int(both.action));
+            update.previous=state; update.current=both; update.upperContent=true;
+            update.upperContentTop=204; update.currentTick=1017; update.currentSourceSequence=2;
+            update.protectCurrentBothEdges=true;
+            state=UpdateVerticalBarPresentation(update);
+            Assert::AreEqual(int(VerticalBarPresentationAction::FIT),int(state.action));
+            Assert::AreEqual(204,state.detectedTop);
+            Assert::AreEqual(2062,state.detectedBottom);
+            // Bounded cadence skips retain the presentation owner, not a pixel
+            // proof for the new source; the renderer still checks each source.
+            for (uint64_t sequence=3;sequence<=60;++sequence) {
+                const uint64_t tick=1000+(sequence-1)*1000/60;
+                Assert::IsTrue(IsVerticalBarPresentationActiveForFrame(state,tick,2000,
+                    sequence,false,true,1,1));
+            }
+            Assert::IsFalse(IsVerticalBarPresentationActiveForFrame(state,4000,2000,7,false,true,1,2));
         }
 
         TEST_METHOD(OffFitsChangingOverlayExtentsWithoutWaitingForClassicMotionTarget)

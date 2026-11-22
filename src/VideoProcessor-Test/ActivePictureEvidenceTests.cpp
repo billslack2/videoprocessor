@@ -15,6 +15,7 @@
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/ExperimentalAspectActive.h>
+#include <vprenderer/OriginalPixelExteriorEvidence.h>
 #include "CppUnitTest.h"
 
 #include <array>
@@ -2790,6 +2791,89 @@ namespace VideoProcessorTest
                     }
                     previous=selected.state;
                 }
+            }
+        }
+
+        TEST_METHOD(RecordedOriginalPixelsDistinguishOneBarFromTwoAndPreserveNewDetail)
+        {
+            char* path=nullptr; size_t length=0;
+            _dupenv_s(&path,&length,"VP_MATTE_INCIDENT_DIR");
+            const std::string dir=path ? path : ""; std::free(path);
+            if (dir.empty() || !ExperimentalAspect::ActiveTrialEnabled()) {
+                Logger::WriteMessage(L"Set VP_MATTE_INCIDENT_DIR and VP_AR_EXPERIMENT=active for the recorded title test.");
+                return;
+            }
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            P010Frame captured(3840,2160);
+            std::ifstream raw(dir+"/matte-28840-134397888180449267-2270965133376-g1-s2154-3.bin",
+                std::ios::binary);
+            raw.read(reinterpret_cast<char*>(captured.bytes.data()),std::streamsize(captured.bytes.size()));
+            Assert::IsTrue(bool(raw));
+            AnalysisEvaluationBudget budget([](void*){return false;},nullptr);
+            constexpr double frameMs=1001.0/60.0;
+            for (int frameIndex=0; frameIndex<6; ++frameIndex) {
+                auto frame=captured;
+                const bool upperControls=frameIndex==0 || frameIndex==5;
+                const bool lowerMark=frameIndex==3;
+                if (!upperControls) {
+                    // Retain captured footer pixels verbatim. Remove player controls
+                    // from the surrounding matte to model a lower-only presentation.
+                    frame.FillRectangle(0,0,3840,260,119);
+                    frame.FillRectangle(0,1898,3840,1988,119);
+                    frame.FillRectangle(0,2080,3840,2160,119);
+                }
+                if (lowerMark)frame.FillRectangle(18,2100,20,2102,126);
+                auto source=frame.P010Source();
+                source.encoding=static_cast<VideoFrameEncoding>(14);
+                source.colorspace=static_cast<ColorSpace>(4);
+                source.range=AnalysisLumaRange::Limited;
+                source.generation=2;
+                ActivePictureFrameIdentity id{2,uint64_t(40001+frameIndex),uint64_t(42001+frameIndex),
+                    uint64_t(6800000000ull+10000*frameMs*frameIndex),6417685342305713284ull,3,2,17712632399396405480ull};
+                const auto native=ExperimentalAspect::MeasureActiveTrial(source,id);
+                const auto exterior=InspectOriginalPixelExterior(source,native,base,&budget);
+                Assert::IsTrue(exterior.complete,L"Exact current native bars are required for the narrower fallback.");
+                Assert::AreEqual(upperControls,exterior.upperDetail);
+                Assert::IsTrue(exterior.lowerDetail);
+                Assert::IsTrue(exterior.bounds.top<=base.top && exterior.bounds.bottom>2062);
+                Assert::IsTrue(exterior.bounds.bottom<2160);
+                if (lowerMark) {
+                    Assert::IsTrue(exterior.bounds.bottom>=2102);
+                    Assert::AreEqual(18,exterior.lowerX);
+                }
+                Assert::IsFalse(InspectOriginalPixelExterior(source,native,base,nullptr).complete,
+                    L"Unbounded optional work must provide no presentation proof.");
+                using namespace AlphaSourceCrop;
+                Input crop;
+                crop.automaticCropEnabled=true;crop.sharedGeometryAvailable=true;
+                crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.geometry=base;crop.rasterWidth=3840;crop.rasterHeight=2160;
+                crop.frameSourceGeneration=crop.geometrySourceGeneration=id.transportGeneration;
+                crop.frameSourceSequence=id.acceptedSequence;
+                crop.verticalTranslationBase=base;crop.verticalTranslationSourceGeneration=id.transportGeneration;
+                // Same previously proposed Classic shift recorded in the player log.
+                crop.verticalTranslationActive=true;crop.verticalTranslationPixels=216;
+                Decision proposed;
+                proposed.applyCrop=true;proposed.verticallyTranslated=true;
+                proposed.owner=DecisionOwner::VERTICAL_TRANSLATION;proposed.verticalTranslationPixels=216;
+                proposed.sourceBounds=base;proposed.sourceBounds.top+=216;proposed.sourceBounds.bottom+=216;
+                ClassicOriginalBarPresentationInput classic;
+                classic.crop=&crop;classic.proposed=proposed;classic.evidence=&exterior;classic.proofBase=base;
+                classic.currentIdentity=classic.proofIdentity=id;
+                classic.policyGeneration=classic.proofPolicyGeneration=7;
+                classic.continuityGeneration=classic.proofContinuityGeneration=9;
+                const auto selection=ResolveClassicOriginalBarPresentation(classic);
+                Assert::IsTrue(selection.applyCrop);
+                Assert::AreEqual(!upperControls,selection.verticallyTranslated);
+                Assert::IsTrue(selection.sourceBounds.bottom>exterior.lowerY);
+                if (upperControls) {
+                    Assert::IsTrue(selection.sourceBounds.top<=exterior.upperY);
+                    Assert::IsTrue(selection.sourceBounds.top<=base.top);
+                }
+                --classic.proofIdentity.acceptedSequence;
+                const auto stale=ResolveClassicOriginalBarPresentation(classic);
+                Assert::IsFalse(stale.applyCrop);
+                Assert::AreEqual(2160,stale.sourceBounds.bottom);
             }
         }
 

@@ -4,6 +4,7 @@
 #include <AnalysisFrame.h>
 #include "InwardCaptionEvidence.h"
 #include "OptionalAnalysisWorker.h"
+#include "OriginalPixelExteriorEvidence.h"
 
 #include <array>
 #include <cmath>
@@ -19,6 +20,7 @@ enum class PreparedPictureEvidenceKind : uint8_t
     RelativeContrast,
     InwardCaption,
     InwardBars,
+    OriginalPixelExterior,
     Count,
 };
 
@@ -117,6 +119,7 @@ struct PreparedPictureEvidence
     ActivePictureVerticalBarProfile inwardBars;
     RelativeBarContrastEvidence relativeContrast;
     AlphaSourceCrop::InwardCaptionEvidence caption;
+    OriginalPixelExteriorEvidence originalPixelExterior;
 };
 
 // The caller supplies the exact immutable extraction identified by key.rawOwner.
@@ -147,6 +150,10 @@ inline PreparedPictureEvidence EvaluatePreparedPictureEvidence(const PreparedPic
         result.relativeContrast = InspectRelativeBarContrast(source, raw, key.base, budget);
         break;
     }
+    case PreparedPictureEvidenceKind::OriginalPixelExterior:
+        result.originalPixelExterior = InspectOriginalPixelExterior(
+            key.frame.source, raw, key.base, budget);
+        break;
     case PreparedPictureEvidenceKind::InwardBars:
         result.inwardBars = InspectNativeVerticalBars(key.frame.source, key.base, budget);
         break;

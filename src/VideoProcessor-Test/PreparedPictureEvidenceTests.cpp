@@ -81,6 +81,35 @@ namespace VideoProcessorTest
     TEST_CLASS(PreparedPictureEvidenceTests)
     {
     public:
+        TEST_METHOD(OriginalPixelExteriorCannotAuthorizeAnotherSourceOrPresentationContext)
+        {
+            OwnedProofFrame frame;
+            auto key=frame.Key(PreparedPictureEvidenceKind::OriginalPixelExterior);
+            PreparedPictureEvidenceCache cache;
+            const auto slot=cache.Request(key);
+            Assert::IsNotNull(slot.get());
+            Assert::IsNull(cache.Lookup(key).get());
+            PreparedPictureEvidence proof;
+            proof.key=key;
+            proof.originalPixelExterior.complete=true;
+            proof.originalPixelExterior.bounds=key.base;
+            std::atomic_store(&slot->ready,std::make_shared<const PreparedPictureEvidence>(proof));
+            Assert::IsTrue(cache.Lookup(key)->originalPixelExterior.complete);
+            auto next=key;
+            ++next.identity.acceptedSequence;
+            Assert::IsNull(cache.Lookup(next).get());
+            next=key;
+            ++next.continuityGeneration;
+            Assert::IsNull(cache.Lookup(next).get());
+            next=key;
+            ++next.policyGeneration;
+            Assert::IsNull(cache.Lookup(next).get());
+            next=key;
+            ++next.base.top;
+            Assert::IsNull(cache.Lookup(next).get());
+            Assert::IsNull(cache.Lookup(frame.Key(PreparedPictureEvidenceKind::Retention)).get());
+        }
+
         TEST_METHOD(CompleteNegativeIsReusableButPendingNeverBecomesEvidence)
         {
             OwnedProofFrame frame; PreparedPictureEvidenceCache cache;
