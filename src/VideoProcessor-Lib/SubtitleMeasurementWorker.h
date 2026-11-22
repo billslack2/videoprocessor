@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitlePlanarBandSnapshot.h>
 #include "vprenderer/ExperimentalAspectActive.h"
 #include <SubtitleContinuitySampling.h>
 #include <AnalysisDiagnosticHooks.h>
@@ -304,10 +305,59 @@ public:
             }
         }
         AttachCanonicalSubtitleContinuityInk(result,source);
+        // Keep one speculative layout seed on the optional worker. Only a later
+        // match to a cue actually accepted by presentation can use this result.
+        bandSeed={};
+        if (preparePublishedCaption && key.analysisStride==2 && result.analyzed &&
+            !result.discontinuity && !result.inspectionCandidateUsed && result.sharedNativeGeometry &&
+            result.barAuthority && result.text.detected && !result.text.held && !result.text.workLimit &&
+            result.pictureTop>0 && result.pictureBottom<source.height && result.text.bounds.Valid()) {
+            const bool top=result.text.bounds.bottom<=result.pictureTop;
+            const bool bottom=result.text.bounds.top>=result.pictureBottom;
+            if (top!=bottom) {
+                // Compare the complete mattes and the adjacent placement region.
+                // The final renderer separately checks its actual destination fits.
+                const int inset=source.height/8;
+                bandTopEnd=(result.pictureTop+(top?inset:2)+1)&~1;
+                bandBottomStart=(result.pictureBottom-(bottom?inset:2))&~1;
+                if (bandSnapshot.Capture(source,bandTopEnd,bandBottomStart)) {
+                    bandSeed=key.identity;bandPolicy=key.policyGeneration;
+                    bandContinuity=key.continuityGeneration;bandScript=key.scriptHint;
+                    bandNear=key.nearBarDistance;bandOptimization=key.optimizationMode;
+                }
+            }
+        }
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
+    bool HasCadenceBandSeed() const { return bandSeed.acceptedSequence!=0; }
+    SubtitleBoxObservation CompareCadenceBands(const AnalysisLumaSource& source,
+        const SubtitleBoxObservation& key) const {
+        auto result=key;
+        const auto& id=key.identity;
+        if (!key.cadenceSkipped || key.analysisStride!=2 || key.discontinuity || !HasCadenceBandSeed() ||
+            id.acceptedSequence<=bandSeed.acceptedSequence || id.acceptedSequence-bandSeed.acceptedSequence!=1 ||
+            id.captureTimestamp<=bandSeed.captureTimestamp || id.transportGeneration!=bandSeed.transportGeneration ||
+            id.sourceFormatGeneration!=bandSeed.sourceFormatGeneration || id.analysisDomainKey!=bandSeed.analysisDomainKey ||
+            id.rendererGeneration!=bandSeed.rendererGeneration || id.viewportGeneration!=bandSeed.viewportGeneration ||
+            key.policyGeneration!=bandPolicy || key.continuityGeneration!=bandContinuity ||
+            key.scriptHint!=bandScript || key.nearBarDistance!=bandNear || key.optimizationMode!=bandOptimization) return result;
+        result.bandComparisonComplete=true;
+        if (bandSnapshot.Matches(source)) {
+            result.matchingBandTemplate=bandSeed;
+            result.bandComparedSource=source;result.bandComparedSource.backingOwner.reset();
+            result.verifiedTopEnd=bandTopEnd;result.verifiedBottomStart=bandBottomStart;
+        }
+        result.text.diagnosticReason=result.matchingBandTemplate.acceptedSequence?
+            "exact-current-cue-bands":"current-cue-bands-changed";
+        return result;
+    }
 private:
+    SubtitlePlanarBandSnapshot bandSnapshot;
+    ActivePictureFrameIdentity bandSeed{};
+    uint64_t bandPolicy=0,bandContinuity=0;
+    SubtitleScriptHint bandScript=SubtitleScriptHint::Latin;
+    int bandTopEnd=0,bandBottomStart=0,bandNear=0,bandOptimization=0;
     SubtitleBoxDetector m_scanner;
     std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
@@ -366,6 +416,7 @@ public:
     }
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
     ~SubtitleMeasurementWorker() { Stop(); }
+    bool HasCadenceBandSeed() const { return m_bandSeedReady.load(std::memory_order_relaxed); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
         if((a.sharedPicture.inspectionCandidate.valid &&
                 !a.sharedPicture.inspectionCandidate.AvailableFor(a.identity,a.width,a.height,a.policyGeneration,a.continuityGeneration)) ||
@@ -675,7 +726,11 @@ private:
             const auto workStart=std::chrono::steady_clock::now();
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
-            try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            try {
+                result=job.work(scanner,previous);
+                if (!job.key.cadenceSkipped) previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);
+                m_bandSeedReady.store(scanner.HasCadenceBandSeed(),std::memory_order_relaxed);
+            } catch(...) {result.analyzed=false; m_bandSeedReady.store(false,std::memory_order_relaxed);}
             const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
             const auto detector=scanner.TakeDetectorDiagnostics();
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
@@ -697,14 +752,18 @@ private:
                 m_diagnostics.jobElapsedMs+=ms;
                 m_diagnostics.jobPeakMs=(std::max)(m_diagnostics.jobPeakMs,ms);
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
-                if(!result.analyzed)++m_diagnostics.failed;
+                if(!result.analyzed) {if(!job.key.cadenceSkipped)++m_diagnostics.failed;}
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}
                 m_active=false;
                 if(!m_stopping) {
-                    if(m_ready.size()>=16) {
-                        events.Add(m_ready.front(),"evict","ready-capacity");
-                        m_ready.pop_front();
+                    // A skipped-frame comparison must not displace a completed detector scan.
+                    const auto sameKind=[&](const SubtitleBoxObservation& item) {
+                        return item.cadenceSkipped==job.key.cadenceSkipped;
+                    };
+                    if(std::count_if(m_ready.begin(),m_ready.end(),sameKind)>=(job.key.cadenceSkipped?4:16)) {
+                        const auto oldest=std::find_if(m_ready.begin(),m_ready.end(),sameKind);
+                        events.Add(*oldest,"evict","ready-capacity");m_ready.erase(oldest);
                     }
                     m_ready.push_back(std::move(result));
                     if(DebugLog::IsEnhancedLoggingEnabled()) {
@@ -717,6 +776,7 @@ private:
             }
         }
     }
+    std::atomic<bool> m_bandSeedReady{false};
     Diagnostics m_diagnostics;
     std::mutex m_mutex;
     std::condition_variable m_changed;
@@ -915,6 +975,54 @@ public:
                 (a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
                  b.sourceFrameNumber-a.sourceFrameNumber==sourceGap));
         if(context && !backlogReassociation)return Reject("pending-context-changed");
+        // A completed native-band comparison is a current-source certificate,
+        // not an old pixel buffer. Never fall back to sparse old samples when
+        // a completed comparison disagrees or belongs to another template.
+        if(key.bandComparisonComplete) {
+            const auto& compared=key.bandComparedSource;
+            const bool sameSource=compared.data && compared.data==source.data &&
+                compared.dataBytes==source.dataBytes && compared.width==source.width &&
+                compared.height==source.height && compared.rowBytes==source.rowBytes &&
+                compared.chromaRowBytes==source.chromaRowBytes && compared.format==source.format &&
+                compared.encoding==source.encoding && compared.colorspace==source.colorspace &&
+                compared.range==source.range && compared.generation==source.generation &&
+                compared.rgbBitAlignment==source.rgbBitAlignment && !compared.backingOwner;
+            if(!sameSource)return Reject("current-band-source-mismatch");
+            if(context || !SameAnalysisFrameIdentity(key.matchingBandTemplate,old.identity) ||
+                !key.sharedPicture.required || !key.sharedPicture.Matches(old.sharedPicture) ||
+                !SubtitleBoxLookahead::HasSharedNativeGeometry(key) ||
+                !SubtitleBoxLookahead::HasSharedNativeGeometry(old) ||
+                key.pictureTop!=old.pictureTop || key.pictureBottom!=old.pictureBottom)
+                return Reject("current-band-template-mismatch");
+            auto current=m_reference;
+            auto& pending=current.current;
+            pending.identity=b;pending.sharedPicture=key.sharedPicture;
+            pending.sharedNativeGeometry=true;pending.inspectionCandidateUsed=key.inspectionCandidateUsed;
+            pending.pictureTop=key.pictureTop;pending.pictureBottom=key.pictureBottom;
+            pending.policyGeneration=key.policyGeneration;pending.continuityGeneration=key.continuityGeneration;
+            pending.pendingRefresh=true;pending.pendingBarGlyphsVerified=true;
+            pending.pendingBarGlyphsLocal=false;pending.pendingExactBandGlyphsVerified=true;
+            pending.bandComparisonComplete=true;pending.matchingBandTemplate=key.matchingBandTemplate;
+            pending.verifiedTopEnd=key.verifiedTopEnd;pending.verifiedBottomStart=key.verifiedBottomStart;
+            pending.bandComparedSource=key.bandComparedSource;
+            pending.discontinuity=false;pending.analysisRefresh=false;
+            pending.barEvidence={};pending.barAuthority=false;pending.independentBarAnalysis=false;
+            pending.sharedNativePhysicalSupport=false;pending.barTrackingAuthority=false;
+            pending.currentAnchorUsesTrackedEdge=false;pending.hasBarTrackingReference=false;
+            pending.glyphLocalTop=pending.glyphLocalBottom=false;pending.glyphLocalVerifiedBounds={};
+            pending.glyphSupportIdentity=b;pending.glyphSupportPolicy=key.policyGeneration;
+            pending.glyphSupportContinuity=key.continuityGeneration;
+            pending.glyphSupportTop=key.pictureTop;pending.glyphSupportBottom=key.pictureBottom;
+            pending.text.topSearchComplete=pending.text.bottomSearchComplete=false;
+            pending.incomingBarTrackingReference={};pending.subtitleArProof={};pending.subtitleArDarkness={};
+            pending.barStripClearance={};pending.analysisMs=0;
+            if(!SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(pending))
+                return Reject("current-band-glyph-coverage-unavailable");
+            m_elapsed+=elapsedMs;m_last=b;
+            current.futureAvailable=false;current.following={};current.followingCount=0;current.matchingFrames=1;
+            current.currentLinesConfirmed=false;current.newScanMs=0;current.newScanFrames=0;
+            preview=std::move(current);m_reason="verified-current-native-bands";return true;
+        }
         const bool localReference=SubtitleBoxLookahead::CanSeedSharedLocalBarGlyphs(old);
         int currentLocalBlackFloor=1023;
         for(const auto& sample:m_samples) {

@@ -26,22 +26,28 @@ int main(int argc, char **argv) {
     if (argc < 4)
         return 2;
     if (std::string(argv[2]) != "raised" && std::string(argv[2]) != "raised-clear-ui" &&
-        std::string(argv[2]) != "raised-clear-ui-with-mark")
+        std::string(argv[2]) != "raised-clear-ui-with-mark" &&
+        std::string(argv[2]) != "raised-clear-ui-with-near-mark" &&
+        std::string(argv[2]) != "synthetic-clean" &&
+        std::string(argv[2]) != "synthetic-weakmark" &&
+        std::string(argv[2]) != "synthetic-brightmark")
         return 2;
     const bool requireScope = argc > 4 && std::string(argv[4]) == "--require-scope";
     auto b = read(argv[1]);
     const std::string variant = argv[2];
+    const bool synthetic = variant.compare(0, 10, "synthetic-") == 0;
     const bool actual2173 = std::string(argv[3]) == "2173";
     if (!actual2173 && std::string(argv[3]) != "2154")
         return 2;
     if (b.size() != 24883200)
         return 3;
     const auto *original = reinterpret_cast<const uint16_t *>(b.data());
-    if ((original[size_t(2049) * 3840 + 1431] >> 6) != (actual2173 ? 156 : 150)) {
+    if (!synthetic && (original[size_t(2049) * 3840 + 1431] >> 6) != (actual2173 ? 156 : 150)) {
         std::cerr << "unexpected capture; expected S2154/S2173 footer pixel\n";
         return 2;
     }
-    if (variant == "raised-clear-ui" || variant == "raised-clear-ui-with-mark") {
+    if (variant == "raised-clear-ui" || variant == "raised-clear-ui-with-mark" ||
+        variant == "raised-clear-ui-with-near-mark") {
         auto *p = reinterpret_cast<uint16_t *>(b.data());
         for (int y = 0; y < 2160; ++y)
             if (y < 260 || y >= 1898)
@@ -53,6 +59,16 @@ int main(int argc, char **argv) {
         auto *p = reinterpret_cast<uint16_t *>(b.data());
         for (int y = 1980; y < 1988; ++y)
             for (int x = 25; x < 33; ++x)
+                p[size_t(y) * 3840 + x] = uint16_t(700 << 6);
+    }
+
+    // An independent current mark inside the candidate line envelope, below
+    // the measured half-open line bottom. This must not become caption-owned
+    // merely because a larger rectangular capture happens to include it.
+    if (variant == "raised-clear-ui-with-near-mark") {
+        auto *p = reinterpret_cast<uint16_t *>(b.data());
+        for (int y = 2048; y < 2050; ++y)
+            for (int x = 2440; x < 2448; ++x)
                 p[size_t(y) * 3840 + x] = uint16_t(700 << 6);
     }
 
@@ -168,6 +184,13 @@ int main(int argc, char **argv) {
               << residual.visibleBottom.firstY << " luma=" << residual.visibleBottom.firstLuma
               << " cutoff=" << residual.visibleBottom.lumaCutoff
               << " threshold=" << raw.presentationBlackThreshold << "\n";
+    if ((variant == "synthetic-weakmark" || variant == "synthetic-brightmark") &&
+        (!residual.visibleBottom.nativePixelDetail || residual.visibleBottom.nativePixelX < 25 ||
+         residual.visibleBottom.nativePixelX >= 33 || residual.visibleBottom.nativePixelY < 1980 ||
+         residual.visibleBottom.nativePixelY >= 1988)) {
+        std::cerr << "ERROR: residual proof did not independently detect the synthetic mark\n";
+        return 3;
+    }
     auto strict = EvaluateQualifiedSubtitlePresentationEvidence(s, raw, q);
     auto prepared = EvaluatePreparedSubtitlePresentationEvidence(s, raw, q);
     std::cout << "strict=" << strict.qualified << ":" << strict.reason
@@ -184,15 +207,25 @@ int main(int argc, char **argv) {
               << " safe=" << view.retention.excludedBandsPixelSafe << " ";
     bounds("view", view.currentBounds);
     std::cout << "\n";
-    if ((variant == "raised" || variant == "raised-clear-ui-with-mark") && view.qualified) {
+    if ((variant == "raised" || variant == "raised-clear-ui-with-mark" ||
+         variant == "raised-clear-ui-with-near-mark" ||
+         variant == "synthetic-weakmark" || variant == "synthetic-brightmark") && view.qualified) {
         std::cerr << "ERROR: exact source contains unowned UI yet projection qualified\n";
         return 3;
     }
-    if (variant == "raised-clear-ui-with-mark" &&
+    if ((variant == "raised-clear-ui-with-mark" || variant == "synthetic-weakmark" ||
+         variant == "synthetic-brightmark") &&
         (!view.currentBounds.rasterWidth || view.currentBounds.left > 25 ||
          view.currentBounds.right < 33 || view.currentBounds.top > 1980 ||
          view.currentBounds.bottom < 1988)) {
         std::cerr << "ERROR: selected conservative extent excludes independent mark\n";
+        return 3;
+    }
+    if (variant == "raised-clear-ui-with-near-mark" &&
+        (!view.currentBounds.rasterWidth || view.currentBounds.left > 2440 ||
+         view.currentBounds.right < 2448 || view.currentBounds.top > 2048 ||
+         view.currentBounds.bottom < 2050)) {
+        std::cerr << "ERROR: selected conservative extent excludes independent near mark\n";
         return 3;
     }
     bool scopeReady = false;
@@ -228,7 +261,8 @@ int main(int argc, char **argv) {
         const auto selected =
             final.applied ? final.sourceBounds : admitted.presentation.sourceBounds;
         scopeReady =
-            !admitted.blocked && admitted.presentation.applyCrop && geom.content.bottom > 2049 &&
+            !admitted.blocked && admitted.presentation.applyCrop &&
+            (synthetic || geom.content.bottom > 2049) &&
             selected.left == 0 && selected.right == 3840 && selected.top > 0 &&
             selected.bottom < 2160 && selected.left <= geom.destination.left &&
             selected.top <= geom.destination.top && selected.right >= geom.destination.right &&
@@ -240,7 +274,7 @@ int main(int argc, char **argv) {
     } else
         std::cout << "unowned pixels: retain current raw evidence; any proposed crop must contain "
                      "them or fail open\n";
-    if (requireScope && !scopeReady) {
+    if ((requireScope || variant == "synthetic-clean") && !scopeReady) {
         std::cerr << "ACCEPTANCE_RED: scope-safe real glyph relocation not established\n";
         return 1;
     }

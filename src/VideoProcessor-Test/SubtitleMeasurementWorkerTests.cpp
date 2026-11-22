@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitlePlanarBandSnapshot.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -987,6 +988,51 @@ public:
             Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
             Assert::IsFalse(pending.available);
         }
+    }
+    TEST_METHOD(PlanarBandSnapshotRequiresEveryCoveredNativePixel) {
+        for(auto format : {AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,
+            AnalysisLumaFormat::DecodedDolbyVision422}) {
+            const size_t plane=160*90;
+            std::vector<uint16_t> pixels(plane+(format==AnalysisLumaFormat::P010?plane/2:plane),uint16_t(64<<6));
+            auto source=Source(pixels);source.format=format;
+            SubtitlePlanarBandSnapshot snapshot;
+            Assert::IsTrue(snapshot.Capture(source,24,66));
+            Assert::IsTrue(snapshot.Matches(source));
+            Assert::IsTrue(snapshot.Covers({0,0,160,24}));
+            Assert::IsTrue(snapshot.Covers({0,66,160,90}));
+            Assert::IsFalse(snapshot.Covers({0,23,160,25}));
+            Assert::IsFalse(snapshot.Covers({0,24,160,66}));
+            Assert::IsFalse(snapshot.Covers({-1,0,1,1}));
+            // Current movie changes in the unexamined interior remain current
+            // and are deliberately outside this proof's authority.
+            pixels[40*160+41]^=uint16_t(64);
+            Assert::IsTrue(snapshot.Matches(source));
+            // One native pixel or shared chroma sample anywhere in either band
+            // must defeat reuse, including between detector grid positions.
+            pixels[67*160+41]^=uint16_t(64);
+            Assert::IsFalse(snapshot.Matches(source));
+            pixels[67*160+41]^=uint16_t(64);
+            const int chromaY=format==AnalysisLumaFormat::P010?34:67;
+            pixels[plane+size_t(chromaY)*160+40]^=uint16_t(64);
+            Assert::IsFalse(snapshot.Matches(source));
+            pixels[plane+size_t(chromaY)*160+40]^=uint16_t(64);
+            Assert::IsTrue(snapshot.Matches(source));
+            auto wrong=source;wrong.range=AnalysisLumaRange::Full;
+            Assert::IsFalse(snapshot.Matches(wrong));
+            wrong=source;wrong.dataBytes=1;
+            Assert::IsFalse(snapshot.Matches(wrong));
+            Assert::IsFalse(snapshot.Capture(source,68,24));
+            Assert::IsFalse(snapshot.Matches(source));
+            Assert::IsFalse(snapshot.Covers({0,0,1,1}));
+        }
+        auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);
+        SubtitlePlanarBandSnapshot snapshot;
+        Assert::IsFalse(snapshot.Capture(source,23,66),L"P010 chroma boundaries must be even.");
+        Assert::IsFalse(snapshot.Capture(source,24,67));
+        Assert::IsTrue(snapshot.Capture(source,40,40));
+        Assert::IsTrue(snapshot.Covers({0,0,160,90}),L"Adjacent bands cover the full raster.");
+        source.format=AnalysisLumaFormat::NativeRgb;
+        Assert::IsFalse(snapshot.Capture(source,24,66));
     }
     TEST_METHOD(PendingSeedNeverPromotesUnacceptedDetectorRows) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);

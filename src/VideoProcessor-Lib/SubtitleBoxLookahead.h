@@ -124,6 +124,11 @@ struct SubtitleBoxObservation
     int optimizationMode=0;
     unsigned analysisStride=1;
     bool cadenceSkipped=false;
+    // Complete current native band comparison, independent of detector cadence.
+    bool bandComparisonComplete=false, pendingExactBandGlyphsVerified=false;
+    ActivePictureFrameIdentity matchingBandTemplate{};
+    int verifiedTopEnd=0, verifiedBottomStart=0;
+    AnalysisLumaSource bandComparedSource{}; // Borrowed descriptor; never retain or dereference its storage.
     SubtitleScriptHint scriptHint=SubtitleScriptHint::Latin;
     ActivePictureFrameIdentity identity;
     SubtitleBoxResult text;
@@ -535,9 +540,15 @@ namespace SubtitleBoxLookahead
 
     inline bool HasPendingSharedBarGlyphSupport(const SubtitleBoxObservation& o)
     {
+        const bool exactBand=o.pendingExactBandGlyphsVerified;
+        if(exactBand && (!o.bandComparisonComplete || !o.matchingBandTemplate.acceptedSequence ||
+            o.pendingBarGlyphsLocal || o.barAuthority || o.independentBarAnalysis ||
+            o.sharedNativePhysicalSupport || o.verifiedTopEnd<=0 || o.verifiedTopEnd>o.height ||
+            o.verifiedBottomStart<0 || o.verifiedBottomStart>=o.height ||
+            o.verifiedTopEnd>o.verifiedBottomStart))return false;
         if(!o.pendingBarGlyphsVerified || !o.pendingRefresh || !o.analyzed || o.analysisRefresh ||
             o.discontinuity || o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge ||
-            !HasSharedNativeGeometry(o) || (!o.pendingBarGlyphsLocal && (!o.barAuthority || !o.barEvidence.available)) || !o.ink || !o.ink->paletteValid ||
+            !HasSharedNativeGeometry(o) || (!exactBand && !o.pendingBarGlyphsLocal && (!o.barAuthority || !o.barEvidence.available)) || !o.ink || !o.ink->paletteValid ||
             !SameAnalysisFrameIdentity(o.identity,o.glyphSupportIdentity) ||
             o.policyGeneration!=o.glyphSupportPolicy || o.continuityGeneration!=o.glyphSupportContinuity ||
             o.pictureTop!=o.glyphSupportTop || o.pictureBottom!=o.glyphSupportBottom ||
@@ -548,15 +559,19 @@ namespace SubtitleBoxLookahead
         for(size_t i=0;i<o.text.linePanels.size();++i)
             if(o.text.linePanels[i].Valid() || o.text.lineCapturePanels[i].Valid())return false;
         const int step=SubtitleBoxDetector::SamplingStep(o.width,o.height);
-        bool top=(o.pendingBarGlyphsLocal || o.barEvidence.top>0) && o.pictureTop>0;
-        bool bottom=(o.pendingBarGlyphsLocal || o.barEvidence.bottom<o.height) && o.pictureBottom<o.height;
+        bool top=(exactBand || o.pendingBarGlyphsLocal || o.barEvidence.top>0) && o.pictureTop>0;
+        bool bottom=(exactBand || o.pendingBarGlyphsLocal || o.barEvidence.bottom<o.height) && o.pictureBottom<o.height;
         for(int i=0;i<o.text.lineCount;++i) {
             const auto& r=o.text.lineBounds[i];
             if(!r.Valid() || r.left<0 || r.top<0 || r.right>o.width || r.bottom>o.height)return false;
             const SubtitleBoxRect capture{(std::max)(0,r.left-(step-1)-2),
                 (std::max)(0,r.top-(step-1)),(std::min)(o.width,r.right+2),r.bottom};
-            top &= capture.bottom<=(o.pendingBarGlyphsLocal?o.pictureTop:(std::min)(o.barEvidence.top,o.pictureTop));
-            bottom &= capture.top>=(o.pendingBarGlyphsLocal?o.pictureBottom:(std::max)(o.barEvidence.bottom,o.pictureBottom));
+            top &= capture.bottom<=((exactBand || o.pendingBarGlyphsLocal)?o.pictureTop:(std::min)(o.barEvidence.top,o.pictureTop));
+            bottom &= capture.top>=((exactBand || o.pendingBarGlyphsLocal)?o.pictureBottom:(std::max)(o.barEvidence.bottom,o.pictureBottom));
+            if(exactBand) {
+                top &= capture.bottom<=o.verifiedTopEnd;
+                bottom &= capture.top>=o.verifiedBottomStart;
+            }
             if(o.pendingBarGlyphsLocal) {
                 const auto& roi=o.glyphLocalVerifiedBounds;
                 if(!roi.Valid() || roi.left<0 || roi.top<0 || roi.right>o.width || roi.bottom>o.height ||
@@ -565,6 +580,7 @@ namespace SubtitleBoxLookahead
             }
         }
         if(top==bottom)return false;
+        if(exactBand)return true; // Glyph extraction only; never bar or absence proof.
         if(o.pendingBarGlyphsLocal)return !o.barAuthority && !o.independentBarAnalysis &&
             !o.sharedNativePhysicalSupport && o.glyphLocalBlackFloor>=0 && o.glyphLocalBlackFloor<=96;
         const auto& b=o.barEvidence;

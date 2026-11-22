@@ -9368,6 +9368,9 @@ struct LibplaceboVideoRenderer::Impl
             publishedSource && DebugLog::IsEnhancedLoggingEnabled()?&alternateOutcome:nullptr);
         if(alternateOutcome)trace(SubtitleTraceVisit::AlternateWorker,"alternate-worker",alternateOutcome);
         if(haveReady) {
+            if(key.cadenceSkipped && ready.bandComparisonComplete &&
+                SameAnalysisFrameIdentity(ready.identity,key.identity) && ready.policyGeneration==policy &&
+                ready.continuityGeneration==continuity) return ready;
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint)) {
                 trace(SubtitleTraceVisit::ExactResult, "read", "compatible-current-result");
@@ -9420,6 +9423,9 @@ struct LibplaceboVideoRenderer::Impl
             DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
         }
         if (!allowSubmit || key.cadenceSkipped) {
+            if (allowSubmit && key.cadenceSkipped && subtitleMeasurementWorker.HasCadenceBandSeed())
+                subtitleMeasurementWorker.Submit(key,[prepared,key](SubtitleMeasurementSampler& scanner,
+                    const SubtitleBarTrackingReference&) { return scanner.CompareCadenceBands(prepared.source,key); });
             if (key.cadenceSkipped) trace(SubtitleTraceVisit::CadenceSkip, "schedule", "cadence-skip");
             else trace(SubtitleTraceVisit::ReadOnly, "schedule", "read-only-repeat");
             key.text.diagnosticReason = "input-cadence-not-analyzed";
@@ -15142,6 +15148,17 @@ struct LibplaceboVideoRenderer::Impl
                         subtitleLipLogContextMask=lip.contextMismatchMask;subtitleLipLogEdgeMask=lip.edgeEvidenceMask;
                         subtitleLipLogCandidateRetained=lip.candidateRetained;
                     }
+                }
+                if(move.valid && currentSubtitlePreview.current.pendingExactBandGlyphsVerified) {
+                    const auto& verified=currentSubtitlePreview.current;
+                    auto covered=[&](const SubtitleBoxRect& rect) {
+                        return !rect.Valid() || (rect.left>=0 && rect.right<=verified.width && rect.top>=0 &&
+                            rect.bottom<=verified.height && (rect.bottom<=verified.verifiedTopEnd ||
+                            rect.top>=verified.verifiedBottomStart));
+                    };
+                    if(!move.pendingGlyphsOnly || !covered(move.source) || !covered(move.content) ||
+                        !covered(move.destination) || !covered(move.pictureCapture) || move.generatedCleanup.Valid())
+                        move={};
                 }
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {

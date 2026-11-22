@@ -1883,7 +1883,7 @@ namespace VideoProcessorTest
             SubtitleMeasurementWorker worker; SubtitlePendingMeasurementGuard pending;
             SubtitleBoxPresentation tracker; SubtitleCutPastePresentation placement;
             int duePositive=0,skippedKept=0,skippedUnknown=0;
-            bool fallbackPreserved=true,staleRejected=true;
+            bool fallbackPreserved=true,staleRejected=true,changedBandRejected=false,substitutedSourceRejected=false;
             for(uint64_t seq=2155;seq<=2162;++seq) {
                 // S2154 pixels are repeated intentionally: following identities,
                 // timestamps, picture marker and UI addition are modeled.
@@ -1897,10 +1897,11 @@ namespace VideoProcessorTest
                     6417685342305713284ull,3,1,17712632399396405480ull};
                 SubtitleBoxObservation key{};key.identity=id;key.width=3840;key.height=2160;
                 key.policyGeneration=2;key.continuityGeneration=6;key.scriptHint=SubtitleScriptHint::Latin;
-                key.nearBarDistance=20;key.sharedPicture.required=true;key.sharedPicture.identity=id;
+                key.nearBarDistance=20;key.analysisStride=2;key.sharedPicture.required=true;key.sharedPicture.identity=id;
                 key.sharedPicture.bounds=base;
                 worker.BeginSourceWindow(id);
                 const bool due=InputFrameAnalysisDue(fps,seq);
+                key.cadenceSkipped=!due;
                 SubtitleBoxObservation observed;
                 SubtitleBoxPreview preview;
                 bool pendingOk=false;
@@ -1920,10 +1921,36 @@ namespace VideoProcessorTest
                     staleRejected &= !worker.TryRead(stale,wrong,false,&source);
                     preview=SubtitleBoxLookahead::Resolve(&observed,1,2,6);
                 } else {
-                    Assert::IsFalse(worker.TryRead(key,observed,false,&source));
-                    preview=SubtitleBoxLookahead::Resolve(&key,1,2,6);
+                    worker.Submit(key,[source,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                        return sampler.CompareCadenceBands(source,key);
+                    });
+                    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                    while(!worker.TryRead(key,observed,false,&source)) {
+                        Assert::IsTrue(std::chrono::steady_clock::now()<deadline,L"Current band comparison did not finish in this offline test.");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                    Assert::IsTrue(SameAnalysisFrameIdentity(observed.identity,id));
+                    Assert::IsTrue(observed.bandComparisonComplete);
+                    preview=SubtitleBoxLookahead::Resolve(&observed,1,2,6);
                     if(SubtitleAbsenceIsUnknown(preview.current))++skippedUnknown;
+                    if(observed.matchingBandTemplate.acceptedSequence) {
+                        // Same identity and bytes in a different allocation cannot
+                        // borrow a worker proof bound to the original storage.
+                        auto differentFrame=frame;
+                        auto differentSource=differentFrame.P010Source();
+                        differentSource.range=source.range;differentSource.encoding=source.encoding;
+                        differentSource.colorspace=source.colorspace;
+                        auto guardCopy=pending;auto wrongPreview=preview;
+                        substitutedSourceRejected |= !guardCopy.Resolve(wrongPreview,differentSource,frameMs,250) &&
+                            std::strcmp(guardCopy.DecisionReason(),"current-band-source-mismatch")==0;
+                    }
                     pendingOk=pending.Resolve(preview,source,frameMs,250);
+                    if(addedUi) {
+                        AnalysisLumaSample mark;
+                        Assert::IsTrue(source.Sample(24,1980,mark));
+                        Assert::AreEqual(700,int(mark.luma));
+                        changedBandRejected=!pendingOk;
+                    }
                 }
                 tracker.RefreshReferencePixels(preview,source);
                 const auto accepted=tracker.Consume(preview,250,frameMs,nullptr,false,pendingOk);
@@ -1952,6 +1979,8 @@ namespace VideoProcessorTest
             }
             worker.Stop();
             Assert::IsTrue(staleRejected);
+            Assert::IsTrue(changedBandRejected,L"A changed current band must not reuse the prior cue proof.");
+            Assert::IsTrue(substitutedSourceRejected,L"Compared bytes belong to one exact source allocation.");
             Assert::AreEqual(4,skippedUnknown);
             Assert::IsTrue(fallbackPreserved,L"Unknown replacement must preserve current-source glyphs and UI.");
             Assert::IsTrue(duePositive>=3,L"The exact title should be recognized on analyzed frames.");
