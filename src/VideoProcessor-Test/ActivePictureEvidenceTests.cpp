@@ -1918,6 +1918,13 @@ namespace VideoProcessorTest
                 Assert::IsTrue(present(dot,incident,{},nullptr).second.bottom>=1940);
                 auto faint=incident.frame; faint.FillRectangle(1800,1930,1806,1936,126,507,508);
                 Assert::IsTrue(present(faint,incident,{},nullptr).second.bottom>=1936);
+                // Exercise the boundary of the edge-filter footprint on both
+                // sides; a true connected stroke remains visible at each depth.
+                for(int depth:{7,8,9}) {
+                    auto stroke=incident.frame;
+                    stroke.FillRectangle(1800,1894,1848,1898+depth,126,507,508);
+                    Assert::IsTrue(present(stroke,incident,{},nullptr).second.bottom>=1898+depth);
+                }
                 auto underline=incident.frame; underline.FillRectangle(1800,1894,1848,1914,126,507,508);
                 Assert::IsTrue(present(underline,incident,{},nullptr).second.bottom>=1914);
                 auto colored=incident.frame; colored.FillRectangle(1800,1930,1810,1940,119,700,512);
