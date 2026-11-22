@@ -1084,27 +1084,55 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
         previous=next.luma;
     }
     if (drops < 2) return false;
+    int regionalTailSupport=0;
     if (notchRow >= 0) {
-        // A detached mark cannot borrow picture contrast from one column.
-        // Both adjacent columns must independently show the same notch and
-        // a neutral lobe of comparable strength at the disputed row.
-        const int neighborTolerance = std::max(4,std::min(16,contrast/24));
-        for (int nx : {x-2,x+2}) {
-            if (nx<0 || nx>=samples.source.width) return false;
-            AnalysisLumaSample low, peak;
+        // A localized compression lobe can be asymmetric and vary across
+        // columns. Inspect a bounded current-source region: both sides must
+        // contain several neutral columns with a matte-level notch, a rise
+        // at the disputed depth, and an outward decline. Isolated text cannot
+        // borrow the picture contrast from this one column.
+        const int radius=std::min(16,std::max(4,samples.source.width/480));
+        const int minimumSignal=std::max(4,(int(pixel.luma)-matte)/3);
+        int corroborating=0; bool left=false,right=false;
+        for (int nx=std::max(0,x-radius);nx<=std::min(samples.source.width-1,x+radius);++nx) {
+            if (nx==x) continue;
+            AnalysisLumaSample low, peak, before, after, picture;
             if (!samples.Sample(nx,notchRow,low) || !samples.Sample(nx,y,peak) ||
-                std::abs(int(low.luma)-matte)>4 ||
-                int(peak.luma)-matte < (int(pixel.luma)-matte)/2 ||
-                std::abs(int(peak.luma)-int(pixel.luma))>neighborTolerance ||
+                !samples.Sample(nx,y+inward,before) || !samples.Sample(nx,y-inward,after) ||
+                !samples.Sample(nx,reference,picture)) return false;
+            if (std::abs(int(low.luma)-matte)>8 || int(peak.luma)-matte<minimumSignal ||
+                peak.luma < before.luma || peak.luma < after.luma || picture.luma<matte+24 ||
                 std::abs(int(low.chromaU)-512)>16 || std::abs(int(low.chromaV)-512)>16 ||
-                std::abs(int(peak.chromaU)-512)>16 || std::abs(int(peak.chromaV)-512)>16) return false;
+                std::abs(int(peak.chromaU)-512)>16 || std::abs(int(peak.chromaV)-512)>16) continue;
+            ++corroborating; left |= nx<x; right |= nx>x;
+            AnalysisLumaSample tail1,tail2;
+            const int row1=y-inward*2, row2=y-inward*3;
+            if (row1>=0 && row1<samples.source.height && row2>=0 && row2<samples.source.height &&
+                samples.Sample(nx,row1,tail1) && samples.Sample(nx,row2,tail2) &&
+                std::abs(int(tail1.luma)-matte)<=8 && std::abs(int(tail2.luma)-matte)<=8 &&
+                std::abs(int(tail1.chromaU)-512)<=16 && std::abs(int(tail1.chromaV)-512)<=16 &&
+                std::abs(int(tail2.chromaU)-512)<=16 && std::abs(int(tail2.chromaV)-512)<=16)
+                ++regionalTailSupport;
         }
+        if (corroborating<3 || !left || !right) return false;
     }
     for (int k=1;k<=2;++k) {
         AnalysisLumaSample next;
-        if (!samples.Sample(x,y-k*inward,next) || next.luma <= matte+2 ||
+        if (!samples.Sample(x,y-k*inward,next) ||
             next.luma >= previous || std::abs(int(next.chromaU)-512)>32 ||
             std::abs(int(next.chromaV)-512)>32) return false;
+        if (next.luma <= matte+2) {
+            // Some filters return directly to the matte after one descending
+            // sample. Require an independently corroborated regional return
+            // and one more current neutral matte row before accepting it.
+            AnalysisLumaSample beyond;
+            const int row=y-inward*(k+1);
+            if (notchRow<0 || k!=2 || regionalTailSupport<3 || row<0 || row>=samples.source.height ||
+                std::abs(int(next.luma)-matte)>4 || !samples.Sample(x,row,beyond) ||
+                std::abs(int(beyond.luma)-matte)>4 ||
+                std::abs(int(beyond.chromaU)-512)>16 || std::abs(int(beyond.chromaV)-512)>16) return false;
+            break;
+        }
         previous=next.luma;
     }
     return true;
