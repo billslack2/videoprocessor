@@ -2951,6 +2951,43 @@ namespace VideoProcessorTest
             Assert::IsFalse(titleEvidence.raisedMatteExteriorVerified,L"The recorded title/UI must not certify a crop that excludes it.");
         }
 
+        TEST_METHOD(NativeMatteProofOverridesCoarsePaddingAtRecordedFlash)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            auto evidence=EvaluateActivePicturePresentationRetention(MovingBroadcastEdge(0,true).P010Source(),
+                base,nullptr,true);
+            Assert::IsTrue(evidence.pairedRaisedEdgeContrast && evidence.raisedMatteExteriorVerified);
+            auto initial=RaisedBroadcastCropInput(base,evidence,1109);
+            initial.stabilizeRaisedMatteEnvelope=true;
+            auto selected=AdmitCropPresentation({},initial,Evaluate(initial),5,&evidence);
+            RaisedMattePresentationHold hold;
+            ProtectCurrentNativeMatteDetail(selected,initial,evidence,base,1,1109,&hold,1000,2000,42);
+            Assert::IsTrue(hold.fixedGuard);
+            // The playback trace for S1110 had a native-clear exterior while
+            // the last sparse sample acquired an extra step of padding.
+            evidence.visibleBottom.available=true;
+            evidence.visibleBottom.firstY=1916;
+            evidence.visibleBottom.secondLine=1912;
+            evidence.visibleBottom.coordinate=1921;
+            evidence.visibleBottom.nativePixelDetail=false;
+            evidence.outwardVisibleBoundsAvailable=true;
+            evidence.outwardVisibleBounds=base;
+            evidence.outwardVisibleBounds.bottom=1933;
+            auto next=RaisedBroadcastCropInput(base,evidence,1110);
+            next.stabilizeRaisedMatteEnvelope=true;
+            auto guarded=AdmitCropPresentation(selected.state,next,Evaluate(next),5,&evidence);
+            ProtectCurrentNativeMatteDetail(guarded,next,evidence,base,1,1110,&hold,1017,2000,42);
+            Assert::IsTrue(guarded.presentation.applyCrop);
+            Assert::AreEqual(1920,guarded.presentation.sourceBounds.bottom);
+            evidence.visibleBottom.nativePixelDetail=true;
+            evidence.visibleBottom.nativePixelY=1920;
+            auto outside=AdmitCropPresentation(selected.state,next,Evaluate(next),5,&evidence);
+            ProtectCurrentNativeMatteDetail(outside,next,evidence,base,1,1110,&hold,1017,2000,42);
+            Assert::IsFalse(outside.presentation.applyCrop,
+                L"A current native witness on the first excluded row still overrides the guard.");
+        }
+
         TEST_METHOD(TrialRaisedGuardPreservesCrossingMarksOutsideEnvelope)
         {
             using namespace AlphaSourceCrop;

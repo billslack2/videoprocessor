@@ -5822,8 +5822,10 @@ namespace AlphaSourceCrop
         const int bottom = std::min(input.rasterHeight,input.geometry.bottom+margin);
         const auto& t=evidence.visibleTop;
         const auto& b=evidence.visibleBottom;
-        return (!t.available || t.coordinate >= top) && (!b.available || b.coordinate <= bottom) &&
-            (!t.nativePixelDetail || (t.nativePixelY >= top && t.nativePixelY < bottom)) &&
+        // The coarse visible extent also contains a sample-step allowance.
+        // Current native exterior proof covers that area at native resolution.
+        // Check independently confirmed native detail against the actual crop.
+        return (!t.nativePixelDetail || (t.nativePixelY >= top && t.nativePixelY < bottom)) &&
             (!b.nativePixelDetail || (b.nativePixelY >= top && b.nativePixelY < bottom)) &&
             !evidence.visibleLeft.available && !evidence.visibleRight.available;
     }
