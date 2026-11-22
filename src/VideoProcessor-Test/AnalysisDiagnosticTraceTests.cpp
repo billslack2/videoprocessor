@@ -344,6 +344,178 @@ namespace Tests
             RemoveTree(directory);
         }
 
+        TEST_METHOD(MatteIncidentsCaptureDistinctRenewalsAndRespectBudget)
+        {
+            using Result = MatteIncidentCapture::Result;
+            using Decision = MatteIncidentCapture::Decision;
+            const std::string directory = TempDirectory() + "\\vp-matte-renewal-" +
+                std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
+            const std::wstring wideDirectory(directory.begin(), directory.end());
+            const auto bytes = std::make_shared<std::vector<uint8_t>>(64, 0x55);
+            const auto make = [&](uint64_t sequence, int x, Decision decision) {
+                MatteIncidentCapture::Job job;
+                job.owner = bytes; job.frame.data = bytes->data(); job.frame.dataBytes = bytes->size();
+                job.frame.width = 3840; job.frame.height = 2160;
+                job.frame.transportGeneration = 2; job.frame.acceptedSequence = sequence;
+                job.frame.analysisDomainKey = 41; job.frame.viewportGeneration = 3;
+                job.frame.policyGeneration = 4; job.frame.continuityGeneration = 5;
+                job.evidenceGeneration = 2; job.evidenceSequence = sequence; job.evidenceDomain = 41;
+                job.decision = decision; job.freshWitness = x >= 0; job.bottomX = x; job.bottomY = 1902;
+                return job;
+            };
+            {
+                MatteIncidentCapture capture(wideDirectory);
+                auto job = make(1600, -1, Decision::None);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                Sleep(100);
+                job = make(1601, 3675, Decision::AcquiredMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(1721, -1, Decision::None);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                job = make(1726, 1804, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(1727, 1808, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                // A new location remains distinct even on the next source frame.
+                job = make(1728, 700, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::QueuedRenewal), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(1729, 700, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(1832, 438, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::QueuedRenewal), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(1833, 438, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(1840, 449, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(1850, 1000, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::QueuedRenewal), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(1860, 1300, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::IsTrue(capture.PeakOutstanding() <= 2);
+            }
+            unsigned sidecars = 0, renewals = 0;
+            WIN32_FIND_DATAA entry = {};
+            HANDLE search = FindFirstFileA((directory + "\\*.txt").c_str(), &entry);
+            Assert::IsTrue(search != INVALID_HANDLE_VALUE);
+            do {
+                std::ifstream input(directory + "\\" + entry.cFileName);
+                const std::string text((std::istreambuf_iterator<char>(input)), {});
+                ++sidecars;
+                if (text.find("renewal 1") != std::string::npos) {
+                    ++renewals;
+                    if (text.find("identity_v1 2 1832 ") != std::string::npos)
+                        Assert::IsTrue(text.find("witness_bottom 438,1902") != std::string::npos);
+                }
+            } while (FindNextFileA(search, &entry));
+            FindClose(search);
+            Assert::AreEqual(6u, sidecars);
+            Assert::AreEqual(3u, renewals);
+            RemoveTree(directory);
+        }
+
+        TEST_METHOD(MatteRenewalBusyAndIdentityMismatchDoNotBorrowFrames)
+        {
+            using Result = MatteIncidentCapture::Result;
+            using Decision = MatteIncidentCapture::Decision;
+            struct Gate { HANDLE entered; HANDLE release; };
+            const auto beforeWrite = +[](void* context) {
+                auto* gate = static_cast<Gate*>(context);
+                SetEvent(gate->entered);
+                WaitForSingleObject(gate->release, 5000);
+            };
+            const std::string directory = TempDirectory() + "\\vp-matte-renewal-busy-" +
+                std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
+            const std::wstring wideDirectory(directory.begin(), directory.end());
+            const auto bytes = std::make_shared<std::vector<uint8_t>>(64, 0x55);
+            const auto make = [&](uint64_t sequence, int x, Decision decision) {
+                MatteIncidentCapture::Job job;
+                job.owner = bytes; job.frame.data = bytes->data(); job.frame.dataBytes = bytes->size();
+                job.frame.width = 3840; job.frame.height = 2160;
+                job.frame.transportGeneration = 2; job.frame.acceptedSequence = sequence;
+                job.frame.analysisDomainKey = 41; job.evidenceGeneration = 2;
+                job.evidenceSequence = sequence; job.evidenceDomain = 41;
+                job.decision = decision; job.freshWitness = x >= 0; job.bottomX = x; job.bottomY = 1902;
+                return job;
+            };
+            Gate gate{CreateEventW(nullptr, TRUE, FALSE, nullptr), CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+            Assert::IsTrue(gate.entered != nullptr); Assert::IsTrue(gate.release != nullptr);
+            {
+                MatteIncidentCapture capture(wideDirectory, beforeWrite, &gate);
+                auto job = make(1, -1, Decision::None);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                Assert::AreEqual(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(gate.entered, 2000));
+                job = make(2, 1000, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(4, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Busy), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(uint64_t(1), capture.Dropped());
+                job = make(5, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(10, 1800, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::UnknownSelectedState), static_cast<unsigned>(capture.Observe(job, false, true, true)));
+                job = make(11, 1800, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::IsTrue(capture.PeakOutstanding() <= 2);
+                SetEvent(gate.release);
+            }
+            CloseHandle(gate.entered); CloseHandle(gate.release);
+            RemoveTree(directory);
+
+            const std::string lockDirectory = directory + "-lock";
+            const std::wstring wideLockDirectory(lockDirectory.begin(), lockDirectory.end());
+            Gate lockGate{CreateEventW(nullptr, TRUE, FALSE, nullptr), CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+            Assert::IsTrue(lockGate.entered != nullptr); Assert::IsTrue(lockGate.release != nullptr);
+            {
+                // The injected hook runs only on the worker. The render-side
+                // Observe call must not wait or claim a classified loss.
+                MatteIncidentCapture capture(wideLockDirectory, nullptr, &lockGate, beforeWrite);
+                auto job = make(1, 1000, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(static_cast<DWORD>(WAIT_OBJECT_0), WaitForSingleObject(lockGate.entered, 2000));
+                job = make(2, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::RenewalContentionUnknown), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(3, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(uint64_t(0), capture.Dropped());
+                SetEvent(lockGate.release);
+                Sleep(200);
+                job = make(4, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::QueuedRenewal), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+            }
+            CloseHandle(lockGate.entered); CloseHandle(lockGate.release);
+            WIN32_FIND_DATAA found{};
+            HANDLE file = FindFirstFileA((lockDirectory + "\\*-s4-*.txt").c_str(), &found);
+            Assert::IsTrue(file != INVALID_HANDLE_VALUE);
+            std::ifstream in(lockDirectory + "\\" + found.cFileName);
+            const std::string sidecar((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            FindClose(file);
+            Assert::IsTrue(sidecar.find("prior_unclassified_contention 1") != std::string::npos);
+            Assert::IsTrue(sidecar.find("renewal_semantics current_observation") != std::string::npos);
+            RemoveTree(lockDirectory);
+
+            const std::string invalidDirectory = directory + "-invalid";
+            const std::wstring wideInvalidDirectory(invalidDirectory.begin(), invalidDirectory.end());
+            {
+                MatteIncidentCapture capture(wideInvalidDirectory);
+                auto job = make(1, 1000, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Sleep(100);
+                job = make(2, 1500, Decision::CurrentMargin);
+                job.owner.reset();
+                job.frame.data = nullptr;
+                Assert::AreEqual(static_cast<unsigned>(Result::InvalidSource), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                job = make(3, 1500, Decision::CurrentMargin);
+                Assert::AreEqual(static_cast<unsigned>(Result::None), static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(uint64_t(1), capture.Dropped());
+            }
+            RemoveTree(invalidDirectory);
+        }
+
         TEST_METHOD(MatteIncidentsCanArmAfterStartupAndCaptureFirstMargin)
         {
             using Result = MatteIncidentCapture::Result;

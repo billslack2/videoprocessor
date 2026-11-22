@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -19,7 +20,7 @@ class MatteIncidentCapture
 {
 public:
     enum class Decision : uint32_t { None, AcquiredMargin, CurrentMargin, HeldMargin };
-    enum class Result : uint32_t { None, Queued, IdentityMismatch, Busy, InvalidSource, UnknownSelectedState };
+    enum class Result : uint32_t { None, Queued, QueuedRenewal, IdentityMismatch, Busy, InvalidSource, UnknownSelectedState, RenewalContentionUnknown };
     struct Job
     {
         AnalysisDiagnosticFramePacketV1 frame{};
@@ -29,11 +30,22 @@ public:
         uint64_t evidenceSequence = 0;
         uint64_t evidenceDomain = 0;
         Decision decision = Decision::None;
+        // Witness coordinates are supplied only by the exact selected journal
+        // snapshot. They never supply crop authority.
+        bool freshWitness = false;
+        int topX = -1, topY = -1, bottomX = -1, bottomY = -1;
         bool acquisition = false;
         bool marginOnset = false;
+        bool renewal = false;
+        bool priorUnclassifiedContention = false;
     };
 
-    explicit MatteIncidentCapture(const std::wstring& directory = {}) noexcept
+    using WriterHook = void (*)(void*);
+    // WriterHook is an optional worker-only test seam; production leaves it null.
+    explicit MatteIncidentCapture(const std::wstring& directory = {},
+        WriterHook beforeWrite = nullptr, void* hookContext = nullptr,
+        WriterHook whileLocked = nullptr) noexcept
+        : m_beforeWrite(beforeWrite), m_hookContext(hookContext), m_whileLocked(whileLocked)
     {
         try
         {
@@ -106,6 +118,10 @@ public:
         {
             const bool possibleOnset = (scope && !m_wasScope.load(std::memory_order_relaxed)) ||
                 (scope && margin && !m_wasMargin.load(std::memory_order_relaxed));
+            const bool possibleRenewal = currentIdentity && scope && margin && input.freshWitness &&
+                input.decision == Decision::CurrentMargin;
+            if (!currentIdentity)
+                m_renewalQuarantined.store(true, std::memory_order_relaxed);
             // Losing an onset is reported; never relabel a later frame as it.
             m_wasScope.store(currentIdentity ? scope : true, std::memory_order_relaxed);
             m_wasMargin.store(currentIdentity ? (scope && margin) : true, std::memory_order_relaxed);
@@ -113,11 +129,21 @@ public:
                 return m_unknownSelected.exchange(true, std::memory_order_relaxed)
                     ? Result::None : Result::UnknownSelectedState;
             if (possibleOnset)
+            {
                 m_dropped.fetch_add(1, std::memory_order_relaxed);
-            return possibleOnset ? Result::Busy : Result::None;
+                return Result::Busy;
+            }
+            if (possibleRenewal && !m_renewalContention.exchange(true, std::memory_order_relaxed))
+            {
+                m_everRenewalContention.store(true, std::memory_order_relaxed);
+                return Result::RenewalContentionUnknown;
+            }
+            return Result::None;
         }
+        m_renewalContention.store(false, std::memory_order_relaxed);
+        const bool wasMargin = m_wasMargin.load(std::memory_order_relaxed);
         const bool acquisition = scope && !m_wasScope.load(std::memory_order_relaxed) && m_scopeCount < 4;
-        const bool marginOnset = scope && margin && !m_wasMargin.load(std::memory_order_relaxed) && m_marginCount < 4;
+        const bool marginOnset = scope && margin && !wasMargin && m_marginCount < 4;
         if (!currentIdentity)
         {
             // A decision was submitted but its source owner is not exact.
@@ -126,6 +152,7 @@ public:
             // until a later current non-scope or non-margin frame clears them.
             m_wasScope.store(true, std::memory_order_relaxed);
             m_wasMargin.store(true, std::memory_order_relaxed);
+            m_renewalQuarantined.store(true, std::memory_order_relaxed);
             const bool firstUnknown = !m_unknownSelected.exchange(true, std::memory_order_relaxed);
             if (acquisition || marginOnset)
             {
@@ -135,24 +162,46 @@ public:
             return firstUnknown ? Result::UnknownSelectedState : Result::None;
         }
         m_unknownSelected.store(false, std::memory_order_relaxed);
+        if (!scope || !margin)
+            m_renewalQuarantined.store(false, std::memory_order_relaxed);
+        const bool exactWitness = scope && margin && input.freshWitness &&
+            (input.decision == Decision::CurrentMargin || input.decision == Decision::AcquiredMargin) &&
+            input.frame.acceptedSequence != 0 &&
+            input.evidenceGeneration == input.frame.transportGeneration &&
+            input.evidenceSequence == input.frame.acceptedSequence &&
+            input.evidenceDomain == input.frame.analysisDomainKey && input.evidenceDomain != 0 &&
+            (ValidWitness(input.topX, input.topY, input.frame) ||
+             ValidWitness(input.bottomX, input.bottomY, input.frame));
+        const bool renewal = !acquisition && !marginOnset && wasMargin && exactWitness &&
+            input.decision == Decision::CurrentMargin && m_witnessCount < m_witnesses.size() &&
+            !m_renewalQuarantined.load(std::memory_order_relaxed) &&
+            m_renewalCount < 3 && HasDistinctWitness(input);
         m_wasScope.store(scope, std::memory_order_relaxed);
         m_wasMargin.store(scope && margin, std::memory_order_relaxed);
-        if (!acquisition && !marginOnset)
+        if (!acquisition && !marginOnset && !renewal)
             return Result::None;
         if (!input.owner || !input.frame.data || input.frame.format != 0 ||
             !input.frame.dataBytes || input.frame.dataBytes > 128ull * 1024 * 1024)
         {
+            if (exactWitness)
+                RememberWitnesses(input);
             m_dropped.fetch_add(1, std::memory_order_relaxed);
             return Result::InvalidSource;
         }
         if (m_outstanding >= m_queue.size())
         {
+            // The exact source is lost. Remember this witness to avoid
+            // relabeling a later nearby frame as the missed trigger.
+            if (exactWitness)
+                RememberWitnesses(input);
             m_dropped.fetch_add(1, std::memory_order_relaxed);
             return Result::Busy;
         }
         Job job = input;
         job.acquisition = acquisition;
         job.marginOnset = marginOnset;
+        job.renewal = renewal;
+        job.priorUnclassifiedContention = m_everRenewalContention.load(std::memory_order_relaxed);
         m_queue[(m_head + m_count) % m_queue.size()] = std::move(job);
         ++m_count;
         ++m_outstanding;
@@ -162,9 +211,13 @@ public:
             ++m_scopeCount;
         if (marginOnset)
             ++m_marginCount;
+        if (renewal)
+            ++m_renewalCount;
+        if (exactWitness)
+            RememberWitnesses(input);
         lock.unlock();
         m_changed.notify_one();
-        return Result::Queued;
+        return renewal ? Result::QueuedRenewal : Result::Queued;
     }
     uint64_t Dropped() const noexcept { return m_dropped.load(std::memory_order_relaxed); }
     size_t PeakOutstanding() const noexcept { return m_peakOutstanding.load(std::memory_order_relaxed); }
@@ -174,15 +227,66 @@ public:
         switch (result)
         {
         case Result::Queued: return "queued";
+        case Result::QueuedRenewal: return "queued-renewal-observation";
         case Result::IdentityMismatch: return "identity-mismatch";
         case Result::Busy: return "queue-or-lock-busy";
         case Result::InvalidSource: return "invalid-source";
         case Result::UnknownSelectedState: return "unknown-selected-state";
+        case Result::RenewalContentionUnknown: return "renewal-contended-unclassified";
         default: return "none";
         }
     }
 
 private:
+    struct Witness
+    {
+        int x = -1, y = -1;
+        bool top = false;
+        uint64_t generation = 0, domain = 0, viewport = 0, policy = 0, continuity = 0;
+    };
+    static bool ValidWitness(int x, int y, const AnalysisDiagnosticFramePacketV1& frame) noexcept
+    {
+        return x >= 0 && y >= 0 && static_cast<uint32_t>(x) < frame.width && static_cast<uint32_t>(y) < frame.height;
+    }
+    bool IsNearbyWitness(int x, int y, bool top, const AnalysisDiagnosticFramePacketV1& frame) const noexcept
+    {
+        for (size_t i = 0; i < m_witnessCount; ++i)
+        {
+            const auto& prior = m_witnesses[i];
+            if (prior.top == top && prior.generation == frame.transportGeneration &&
+                prior.domain == frame.analysisDomainKey && prior.viewport == frame.viewportGeneration &&
+                prior.policy == frame.policyGeneration && prior.continuity == frame.continuityGeneration &&
+                std::abs(prior.x - x) <= 16 && std::abs(prior.y - y) <= 16)
+                return true;
+        }
+        return false;
+    }
+    bool HasDistinctWitness(const Job& job) const noexcept
+    {
+        return (ValidWitness(job.topX, job.topY, job.frame) &&
+                !IsNearbyWitness(job.topX, job.topY, true, job.frame)) ||
+            (ValidWitness(job.bottomX, job.bottomY, job.frame) &&
+                !IsNearbyWitness(job.bottomX, job.bottomY, false, job.frame));
+    }
+    void RememberWitnesses(const Job& job) noexcept
+    {
+        for (int side = 0; side < 2; ++side)
+        {
+            const bool top = side == 0;
+            const int x = top ? job.topX : job.bottomX;
+            const int y = top ? job.topY : job.bottomY;
+            if (!ValidWitness(x, y, job.frame) || IsNearbyWitness(x, y, top, job.frame) ||
+                m_witnessCount >= m_witnesses.size())
+                continue;
+            auto& witness = m_witnesses[m_witnessCount++];
+            witness.x = x; witness.y = y; witness.top = top;
+            witness.generation = job.frame.transportGeneration;
+            witness.domain = job.frame.analysisDomainKey;
+            witness.viewport = job.frame.viewportGeneration;
+            witness.policy = job.frame.policyGeneration;
+            witness.continuity = job.frame.continuityGeneration;
+        }
+    }
     static const char* DecisionName(Decision decision) noexcept
     {
         switch (decision)
@@ -295,7 +399,11 @@ private:
             << job.submitted[2] << ' ' << job.submitted[3] << " acquisition " << job.acquisition
             << " margin_onset " << job.marginOnset << " evidence_generation " << job.evidenceGeneration
             << " evidence_sequence " << job.evidenceSequence << " evidence_domain " << job.evidenceDomain
-            << " decision=\"" << DecisionName(job.decision) << "\" dropped " << Dropped() << '\n';
+            << " decision=\"" << DecisionName(job.decision) << "\" dropped " << Dropped()
+            << " renewal " << job.renewal << " witness_top " << job.topX << ',' << job.topY
+            << " witness_bottom " << job.bottomX << ',' << job.bottomY
+            << " prior_unclassified_contention " << job.priorUnclassifiedContention
+            << " renewal_semantics current_observation" << '\n';
         const auto contents = meta.str();
         const auto pending = root + L".pending";
         const auto sidecar = root + L".txt";
@@ -340,13 +448,21 @@ private:
                             break;
                         continue;
                     }
+                    if (m_whileLocked)
+                        m_whileLocked(m_hookContext);
                     job = std::move(m_queue[m_head]);
                     m_queue[m_head] = {};
                     m_head = (m_head + 1) % m_queue.size();
                     --m_count;
                 }
                 bool written = false;
-                try { written = WriteJob(job); } catch (...) { written = false; }
+                try
+                {
+                    if (m_beforeWrite)
+                        m_beforeWrite(m_hookContext);
+                    written = WriteJob(job);
+                }
+                catch (...) { written = false; }
                 if (!written)
                     m_dropped.fetch_add(1, std::memory_order_relaxed);
                 DebugLog::Log("Matte incident writer: generation=%llu sequence=%llu result=%s dropped=%llu",
@@ -365,6 +481,9 @@ private:
         }
     }
     std::wstring m_directory;
+    WriterHook m_beforeWrite = nullptr;
+    void* m_hookContext = nullptr;
+    WriterHook m_whileLocked = nullptr;
     std::atomic<bool> m_armed{false};
     std::mutex m_mutex;
     std::condition_variable m_changed;
@@ -376,6 +495,12 @@ private:
     size_t m_outstanding = 0;
     unsigned m_scopeCount = 0;
     unsigned m_marginCount = 0;
+    unsigned m_renewalCount = 0;
+    std::array<Witness, 22> m_witnesses{};
+    size_t m_witnessCount = 0;
+    std::atomic<bool> m_renewalQuarantined{false};
+    std::atomic<bool> m_renewalContention{false};
+    std::atomic<bool> m_everRenewalContention{false};
     std::atomic<bool> m_wasScope{false};
     std::atomic<bool> m_wasMargin{false};
     std::atomic<bool> m_unknownSelected{false};

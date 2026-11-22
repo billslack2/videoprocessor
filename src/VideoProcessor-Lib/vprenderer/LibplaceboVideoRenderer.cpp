@@ -20844,17 +20844,49 @@ releaseDriftBaseRetention =
                 job.evidenceSequence=evidenceSequence;
                 job.evidenceDomain=evidenceDomain;
                 job.decision=decision;
+                // Renewals use only native witness coordinates carried with this
+                // exact selected source. The journal is metadata, not authority.
+                const auto& witness = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteJournal : temporalPolicyJournal;
+                MatteDecisionJournal::Identity captureIdentity;
+                captureIdentity.generation = packet.transportGeneration;
+                captureIdentity.sequence = packet.acceptedSequence;
+                captureIdentity.domain = packet.analysisDomainKey;
+                captureIdentity.sourceFormat = packet.sourceFormatGeneration;
+                captureIdentity.sourceFrame = packet.sourceFrameNumber;
+                captureIdentity.timestamp = packet.captureTimestamp;
+                captureIdentity.viewport = packet.viewportGeneration;
+                captureIdentity.policy = packet.policyGeneration;
+                captureIdentity.continuity = packet.continuityGeneration;
+                const bool witnessCurrent = current && evidenceCurrent && matteJournalEnabled &&
+                    MatteDecisionJournal::IsSelectedSnapshot(witness.available, temporalRenderer.Mixing(),
+                        witness.identity, captureIdentity) &&
+                    witness.guard == MatteDecisionJournal::Guard::Current &&
+                    witness.analysisValid && witness.presentationValid &&
+                    witness.evidenceGeneration == packet.transportGeneration &&
+                    witness.evidenceSequence == packet.acceptedSequence;
+                job.freshWitness = witnessCurrent && (witness.topNative || witness.bottomNative);
+                if (job.freshWitness && witness.topNative) {
+                    job.topX = witness.topX;
+                    job.topY = witness.topY;
+                }
+                if (job.freshWitness && witness.bottomNative) {
+                    job.bottomX = witness.bottomX;
+                    job.bottomY = witness.bottomY;
+                }
                 const auto captureResult=matteIncidentCapture.Observe(job,current && evidenceCurrent,scope,margin);
                 if (captureResult != MatteIncidentCapture::Result::None) {
                     const uint64_t now=GetTickCount64();
-                    if (captureResult == MatteIncidentCapture::Result::Queued || now >= matteIncidentNextMissLog) {
-                        if (captureResult != MatteIncidentCapture::Result::Queued)
+                    if (captureResult == MatteIncidentCapture::Result::Queued ||
+                        captureResult == MatteIncidentCapture::Result::QueuedRenewal || now >= matteIncidentNextMissLog) {
+                        if (captureResult != MatteIncidentCapture::Result::Queued &&
+                            captureResult != MatteIncidentCapture::Result::QueuedRenewal)
                             matteIncidentNextMissLog=now+2000;
-                        DebugLog::Log("Matte incident trigger: generation=%llu sequence=%llu result=%s scope=%d margin=%d decision=\"%s\" evidence_generation=%llu evidence_sequence=%llu evidence_domain=%llu selected=%llu current=%d actual=%d,%d-%d,%d dropped=%llu",
+                        DebugLog::Log("Matte incident trigger: generation=%llu sequence=%llu result=%s scope=%d margin=%d decision=\"%s\" evidence_generation=%llu evidence_sequence=%llu evidence_domain=%llu selected=%llu current=%d witness_top=%d,%d witness_bottom=%d,%d actual=%d,%d-%d,%d dropped=%llu",
                             frameGeneration,sourceSequence,MatteIncidentCapture::ResultName(captureResult),scope?1:0,margin?1:0,
                             MatteIncidentCapture::Reason(decision),evidenceGeneration,evidenceSequence,evidenceDomain,
-                            selectedSequence,(current && evidenceCurrent)?1:0,actual.left,actual.top,actual.right,actual.bottom,
-                            matteIncidentCapture.Dropped());
+                            selectedSequence,(current && evidenceCurrent)?1:0,job.topX,job.topY,job.bottomX,job.bottomY,
+                            actual.left,actual.top,actual.right,actual.bottom,matteIncidentCapture.Dropped());
                     }
                 }
             }
