@@ -5,6 +5,7 @@
 #include <cstring>
 #include <AnalysisDiagnosticHooks.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
 
 // Crop evidence, admission and recovery always run through the shared policy.
 // Moved styles always undo Classic's final same-size picture translation.
@@ -668,11 +669,72 @@ inline QualifiedSubtitlePresentationView ProjectQualifiedSubtitlePresentationEvi
     if(!proof.qualified || proof.status!=QualifiedSubtitlePresentationStatus::Qualified ||
         !SameAnalysisFrameIdentity(proof.identity,selectedIdentity) ||
         !SameSubtitlePresentationBounds(proof.physicalBase,physicalBase))return result;
+    // A current native witness outside the exact qualified erasure remains
+    // unowned even when sampled projected residuals happened to miss it.
+    const auto& erased=proof.erasedSourceBounds;
+    const auto unowned=[&](const ActivePictureVisibleExtentDiagnostic& edge) {
+        if (!edge.nativePixelDetail) return false;
+        return edge.nativePixelX < 0 || edge.nativePixelY < 0 ||
+            edge.nativePixelX < erased.left || edge.nativePixelX >= erased.right ||
+            edge.nativePixelY < erased.top || edge.nativePixelY >= erased.bottom;
+    };
+    if (unowned(raw.visibleTop) || unowned(raw.visibleBottom) ||
+        unowned(raw.visibleLeft) || unowned(raw.visibleRight)) return result;
     result.retention=proof.retention;
     result.envelope={};result.currentBounds=physicalBase;result.qualified=true;
     return result;
 }
 
+
+// Reconcile the raw dense scan with the *qualified, current* post-composition
+// evidence. A raw side is suppressed only when its occupied rows lie entirely
+// in the already verified erasure; a bare rectangle never grants ownership.
+struct SubtitleRecoveryBarArbitration
+{
+    bool inspectionCompleted = false;
+    bool upper = false, lower = false;
+    ActivePictureBounds bounds;
+};
+inline SubtitleRecoveryBarArbitration ArbitrateSubtitleRecoveryBars(
+    const QualifiedSubtitlePresentationView& view,
+    const QualifiedSubtitlePresentationEvidence& proof,
+    const ActivePictureMeasurementCache::VerticalBarContent& dense,
+    bool denseCurrent, bool independentUpper, bool independentLower,
+    const ActivePictureBounds& nativeBase, const ActivePictureFrameIdentity& selectedIdentity)
+{
+    SubtitleRecoveryBarArbitration result;
+    const bool qualified = view.qualified && proof.qualified &&
+        proof.status == QualifiedSubtitlePresentationStatus::Qualified &&
+        SameAnalysisFrameIdentity(proof.identity, selectedIdentity) &&
+        SameSubtitlePresentationBounds(proof.physicalBase, nativeBase) &&
+        view.retention.analysisValid && view.retention.presentationValid &&
+        view.retention.relocatedOverlayExclusionEvaluated &&
+        view.retention.excludedBandsPixelSafe;
+    result.inspectionCompleted = denseCurrent || qualified;
+    result.bounds = nativeBase;
+    if (!denseCurrent) return result;
+    result.upper = dense.upper;
+    result.lower = dense.lower;
+    const auto& erased = proof.erasedSourceBounds;
+    const bool erasureValid = qualified && erased.left >= 0 && erased.top >= 0 &&
+        erased.right > erased.left && erased.bottom > erased.top &&
+        erased.right <= nativeBase.rasterWidth && erased.bottom <= nativeBase.rasterHeight &&
+        erased.rasterWidth == nativeBase.rasterWidth && erased.rasterHeight == nativeBase.rasterHeight;
+    if (erasureValid) {
+        if (result.upper && !independentUpper && dense.upperTop >= erased.top &&
+            dense.upperBottom > dense.upperTop && dense.upperBottom <= erased.bottom)
+            result.upper = false;
+        if (result.lower && !independentLower && dense.lowerTop >= erased.top &&
+            dense.lowerBottom > dense.lowerTop && dense.lowerBottom <= erased.bottom)
+            result.lower = false;
+    }
+    if (result.upper) result.bounds.top = dense.upperTop;
+    else result.bounds.top = nativeBase.bottom;
+    if (result.lower) result.bounds.bottom = dense.lowerBottom;
+    else result.bounds.bottom = nativeBase.top;
+    result.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+    return result;
+}
 
 // This is a submitted-picture lease, not subtitle ownership or erasure permission.
 struct QualifiedSubtitlePresentationHoldState

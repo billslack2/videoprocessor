@@ -5376,6 +5376,62 @@ namespace VideoProcessorTest
             Assert::IsFalse(raw.excludedBandsPixelSafe,L"Frozen tracker bounds do not rewrite raw analysis.");
             }
         }
+        TEST_METHOD(QualifiedSubtitleRecoveryArbitratesRawDenseBars)
+        {
+            for (bool preparedOnly : {false,true}) {
+                LoggedRelocatedCaptionFixture f(false,true);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto proof=preparedOnly ?
+                    EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,f.Input()) :
+                    EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                Assert::IsTrue(proof.qualified);
+                const auto view=ProjectQualifiedSubtitlePresentationEvidence(proof,{},f.base,f.base,
+                    f.observation.identity,raw);
+                Assert::IsTrue(view.qualified);
+                ActivePictureMeasurementCache::VerticalBarContent dense;
+                dense.lower=true; dense.lowerTop=(std::max)(f.base.bottom,proof.erasedSourceBounds.top);
+                dense.lowerBottom=proof.erasedSourceBounds.bottom;
+                Assert::IsTrue(dense.lowerBottom>dense.lowerTop);
+                const auto owned=ArbitrateSubtitleRecoveryBars(view,proof,dense,true,false,false,f.base,f.observation.identity);
+                Assert::IsTrue(owned.inspectionCompleted);
+                Assert::IsFalse(owned.lower,L"Current qualified owned pixels must not re-enter raw recovery.");
+                const auto independent=ArbitrateSubtitleRecoveryBars(view,proof,dense,true,false,true,f.base,f.observation.identity);
+                Assert::IsTrue(independent.lower,L"An independent same-row witness cannot be erased by the subtitle box.");
+                auto rawWithUi=raw;
+                rawWithUi.visibleBottom.available=true; rawWithUi.visibleBottom.nativePixelDetail=true;
+                rawWithUi.visibleBottom.nativePixelX=proof.erasedSourceBounds.left-8;
+                rawWithUi.visibleBottom.nativePixelY=dense.lowerTop;
+                const auto conflicting=ProjectQualifiedSubtitlePresentationEvidence(proof,{},f.base,f.base,
+                    f.observation.identity,rawWithUi);
+                Assert::IsFalse(conflicting.qualified,L"A native UI witness on the same rows but outside erased columns survives projection.");
+                const auto preservedUi=ArbitrateSubtitleRecoveryBars(conflicting,proof,dense,true,false,false,f.base,f.observation.identity);
+                Assert::IsTrue(preservedUi.lower);
+                auto outside=dense; outside.lowerBottom=(std::min)(2160,proof.erasedSourceBounds.bottom+12);
+                const auto ui=ArbitrateSubtitleRecoveryBars(view,proof,outside,true,false,false,f.base,f.observation.identity);
+                Assert::IsTrue(ui.lower,L"Dense current content outside the verified erasure remains visible.");
+                auto wrong=f.observation.identity; ++wrong.acceptedSequence;
+                const auto stale=ArbitrateSubtitleRecoveryBars(view,proof,dense,true,false,false,f.base,wrong);
+                Assert::IsTrue(stale.lower,L"A qualified proof cannot be reused for another source frame.");
+                auto failed=view; failed.qualified=false;
+                const auto unprepared=ArbitrateSubtitleRecoveryBars(failed,proof,dense,true,false,false,f.base,f.observation.identity);
+                Assert::IsTrue(unprepared.lower,L"No composition means raw current content remains protected.");
+                const auto skipped=ArbitrateSubtitleRecoveryBars(view,proof,dense,false,false,false,f.base,f.observation.identity);
+                Assert::IsTrue(skipped.inspectionCompleted,L"Exact qualified exclusion may resolve an earlier fallback even when the raw scan is skipped.");
+                Assert::IsFalse(skipped.lower);
+                // A real current unowned UI element shares the subtitle rows
+                // but is far outside the composed glyph footprint.
+                f.frame.FillRectangle(40,dense.lowerTop,120,dense.lowerBottom,700);
+                const auto uiRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto uiProof=preparedOnly ?
+                    EvaluatePreparedSubtitlePresentationEvidence(f.Source(),uiRaw,f.Input()) :
+                    EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),uiRaw,f.Input());
+                const auto uiView=ProjectQualifiedSubtitlePresentationEvidence(uiProof,{},f.base,f.base,
+                    f.observation.identity,uiRaw);
+                Assert::IsFalse(uiView.qualified,L"Unowned current UI cannot borrow subtitle erasure.");
+                const auto kept=ArbitrateSubtitleRecoveryBars(uiView,uiProof,dense,true,false,true,f.base,f.observation.identity);
+                Assert::IsTrue(kept.lower);
+            }
+        }
         TEST_METHOD(QualifiedProjectionRejectsDifferentSelectedFrameAndBase)
         {
             LoggedRelocatedCaptionFixture f;

@@ -15479,7 +15479,18 @@ input.currentNativeBounds = crop.geometry;
             prepared.sourceFormat--; prepared.barInspectionCompleted=true;
             Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
             prepared.barInspectionCompleted=false; prepared.pixelProtected=true;
-            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            Assert::IsTrue(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            Assert::AreEqual(212,replacement.top); Assert::AreEqual(2114,replacement.bottom);
+            // A selection that omitted the held top cannot commit an invented
+            // union; only the actual submitted union may replace the record.
+            prepared.frameSubmitted=true; prepared.submittedBounds=translated;
+            const auto rejected=CommitSubmittedPixelProtection(saved,prepared);
+            Assert::AreEqual(2050,rejected.bounds.bottom);
+            Assert::AreEqual(uint64_t(2155),rejected.sourceSequence);
+            prepared.submittedBounds=replacement;
+            const auto widened=CommitSubmittedPixelProtection(saved,prepared);
+            Assert::AreEqual(212,widened.bounds.top); Assert::AreEqual(2114,widened.bounds.bottom);
+            Assert::AreEqual(uint64_t(2156),widened.sourceSequence);
             prepared.pixelProtected=false;
             auto full=submitted.base; full.top=0; full.bottom=2160;
             Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,full,replacement));

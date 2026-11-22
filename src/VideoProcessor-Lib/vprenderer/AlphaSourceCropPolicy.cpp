@@ -6344,6 +6344,10 @@ namespace AlphaSourceCrop
             previous.analysisDomain == input.analysisDomain && previous.sourceFormat == input.sourceFormat &&
             SameTrustedCropContract(previous.base, input.base);
         auto result = sameContext ? previous : SubmittedPixelProtection{};
+        if (sameContext && !input.barInspectionCompleted && input.pixelProtected &&
+            (!ValidBounds(input.submittedBounds,input.base.rasterWidth,input.base.rasterHeight) ||
+             !ContainedBounds(input.submittedBounds,previous.bounds)))
+            return previous; // An unsubmitted union is never a committed view.
         if (input.pixelProtected &&
             ValidBounds(input.base, input.submittedBounds.rasterWidth, input.submittedBounds.rasterHeight) &&
             ValidBounds(input.submittedBounds, input.base.rasterWidth, input.base.rasterHeight) &&
@@ -6368,7 +6372,7 @@ namespace AlphaSourceCrop
         const SubmittedPixelProtectionCommitInput& prepared,
         const ActivePictureBounds& selectedBounds, ActivePictureBounds& replacement)
     {
-        if (!previous.available || prepared.barInspectionCompleted || prepared.pixelProtected ||
+        if (!previous.available || prepared.barInspectionCompleted ||
             !prepared.sourceGeneration || !prepared.sourceSequence || !previous.sourceSequence ||
             previous.sourceGeneration != prepared.sourceGeneration ||
             previous.sourceSequence > prepared.sourceSequence ||
@@ -6384,6 +6388,16 @@ namespace AlphaSourceCrop
             ContainedBounds(selectedBounds, previous.bounds))
             return false;
         replacement = previous.bounds;
+        if (prepared.pixelProtected) {
+            // Both are current presentation requirements; keep their union
+            // until a complete exact inspection resolves the old one.
+            replacement.left = std::min(replacement.left,selectedBounds.left);
+            replacement.top = std::min(replacement.top,selectedBounds.top);
+            replacement.right = std::max(replacement.right,selectedBounds.right);
+            replacement.bottom = std::max(replacement.bottom,selectedBounds.bottom);
+            replacement.aspectRatio = double(replacement.right-replacement.left) /
+                std::max(1,replacement.bottom-replacement.top);
+        }
         return true;
     }
 
