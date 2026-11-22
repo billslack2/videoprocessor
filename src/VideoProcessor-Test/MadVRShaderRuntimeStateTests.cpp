@@ -535,6 +535,23 @@ namespace VideoProcessorTest
 				std::string::npos);
 		}
 
+		TEST_METHOD(OptionalNlsTrimPreservesPixelProtectedScopeEnvelope)
+		{
+			const auto source = ResolveNlsSourceGeometry(true, 0, 238, 3840, 1920, 3840, 2160);
+			const auto trim = [&](bool protectedPixels) {
+				return ResolveNlsPresentationCrop(source, 2.35, 0.0, 0.0,
+					NlsAspectDirection::NARROWER_ONLY, 1.22, 6.0,
+					NlsPresentationCropPreference::MINIMIZE_DISTORTION, protectedPixels);
+			};
+			Assert::IsTrue(trim(false).applied);
+			const auto retained = trim(true);
+			Assert::IsFalse(retained.applied);
+			Assert::AreEqual(source.top, retained.source.top);
+			Assert::AreEqual(source.bottom, retained.source.bottom);
+			Assert::AreEqual(source.left, retained.source.left);
+			Assert::AreEqual(source.right, retained.source.right);
+		}
+
 		TEST_METHOD(Vp0131PreserveImageUsesMinimumBoundedSideCrop)
 		{
 			NlsSourceGeometry source;

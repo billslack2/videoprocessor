@@ -196,10 +196,15 @@ NlsPresentationCropDecision ResolveNlsPresentationCrop(
 	double tolerancePercent, double activeAspectMinimum,
 	NlsAspectDirection direction, double maximumStretchRatio,
 	double maximumCropPercent,
-	NlsPresentationCropPreference preference)
+	NlsPresentationCropPreference preference, bool preserveSelectedPixels)
 {
 	NlsPresentationCropDecision result;
 	result.source = source;
+	if (preserveSelectedPixels)
+	{
+		result.reason = "selected source bounds preserve current visible pixels";
+		return result;
+	}
 	if (!source.valid)
 	{
 		result.reason = "NLS presentation crop requires valid source geometry";

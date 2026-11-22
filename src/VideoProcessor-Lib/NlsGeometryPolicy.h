@@ -131,7 +131,7 @@ NlsPresentationCropDecision ResolveNlsPresentationCrop(
 	double tolerancePercent, double activeAspectMinimum,
 	NlsAspectDirection direction, double maximumStretchRatio,
 	double maximumCropPercent,
-	NlsPresentationCropPreference preference);
+	NlsPresentationCropPreference preference, bool preserveSelectedPixels = false);
 
 const char* NlsMappingModeName(NlsMappingMode mode);
 const char* NlsMappingAxisName(const NlsMappingDecision& decision);

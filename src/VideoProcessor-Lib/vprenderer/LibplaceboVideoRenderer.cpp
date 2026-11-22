@@ -18218,7 +18218,9 @@ releaseDriftBaseRetention =
 					nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
 					nlsRule.maximumStretchRatio,
 					nlsRule.vpRendererMaximumCropPercent,
-					nlsRule.vpRendererCropPreference);
+					nlsRule.vpRendererCropPreference,
+					protectNativeMatteDetail || cropDecision.verticallyTranslated ||
+						cropDecision.confirmedFitOwnership.available);
 			}
 			const NlsMappingDecision nlsCandidateDecision = EvaluateNlsMapping(
 				nlsCandidatePresentationCrop.source.valid,
