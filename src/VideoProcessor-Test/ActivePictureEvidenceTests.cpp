@@ -23,7 +23,6 @@
 #include <sstream>
 #include <cstdlib>
 #include <fstream>
-#include <filesystem>
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -1816,9 +1815,17 @@ namespace VideoProcessorTest
                 int acquisition=0; bool found=false;
             };
             Incident incidents[2];
-            for(const auto& item:std::filesystem::directory_iterator(dir)) {
-                if(item.path().extension()!=L".txt") continue;
-                std::ifstream meta(item.path());
+            std::vector<std::string> sidecars;
+            WIN32_FIND_DATAA entry = {};
+            HANDLE search=FindFirstFileA((dir+"\\*.txt").c_str(),&entry);
+            Assert::IsTrue(search!=INVALID_HANDLE_VALUE,L"Incident directory has no sidecars.");
+            do {
+                if((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)==0)
+                    sidecars.push_back(dir+"\\"+entry.cFileName);
+            } while(FindNextFileA(search,&entry));
+            FindClose(search);
+            for(const auto& sidecar:sidecars) {
+                std::ifstream meta(sidecar);
                 int width,height,format,encoding,colorspace,top,bottom,hint,range;
                 size_t pitch,chromaPitch; std::string tag;
                 uint64_t transport,sequence,frameNumber,timestamp,sourceFormat,viewport,renderer,domain,policy,continuity;
@@ -1846,7 +1853,7 @@ namespace VideoProcessorTest
                 Assert::AreEqual(3840,right); Assert::AreEqual(1920,displayBottom);
                 Assert::IsTrue(onset==1 && transport==eg && sequence==es && domain==ed);
                 Assert::AreEqual(acquired ? uint64_t(624) : uint64_t(1134),sequence);
-                auto rawPath=item.path(); rawPath.replace_extension(L".bin");
+                const std::string rawPath=sidecar.substr(0,sidecar.size()-4)+".bin";
                 std::ifstream raw(rawPath,std::ios::binary|std::ios::ate);
                 Assert::IsTrue(bool(raw));
                 Assert::IsTrue(raw.tellg()==std::streamoff(incidents[index].frame.bytes.size()));
