@@ -1858,6 +1858,106 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(OptionalRecordedTitleWorkerCadenceKeepsCurrentGlyphs)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t size=0;
+            _dupenv_s(&value,&size,"VP_8838_INCIDENT_REPLAY_DIR");
+            const std::string dir=value?value:""; std::free(value);
+            if (dir.empty() || !ExperimentalAspect::ActiveTrialEnabled()) {
+                Logger::WriteMessage(L"Set VP_8838_INCIDENT_REPLAY_DIR and VP_AR_EXPERIMENT=active to replay the optional title cadence.");
+                return;
+            }
+            WIN32_FIND_DATAA entry={};
+            HANDLE search=FindFirstFileA((dir+"\\*-g1-s2154-*.bin").c_str(),&entry);
+            Assert::IsTrue(search!=INVALID_HANDLE_VALUE);
+            const std::string bin=dir+"\\"+entry.cFileName;
+            Assert::IsFalse(FindNextFileA(search,&entry)); FindClose(search);
+            P010Frame recorded(3840,2160);
+            std::ifstream data(bin,std::ios::binary|std::ios::ate); Assert::IsTrue(bool(data));
+            Assert::IsTrue(data.tellg()==std::streamoff(recorded.bytes.size()));
+            data.seekg(0);data.read(reinterpret_cast<char*>(recorded.bytes.data()),std::streamsize(recorded.bytes.size()));
+            Assert::IsTrue(bool(data));
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            constexpr double fps=60000.0/1001.0, frameMs=1001.0/60.0;
+            SubtitleMeasurementWorker worker; SubtitlePendingMeasurementGuard pending;
+            SubtitleBoxPresentation tracker; SubtitleCutPastePresentation placement;
+            int duePositive=0,skippedKept=0,skippedUnknown=0;
+            bool fallbackPreserved=true,staleRejected=true;
+            for(uint64_t seq=2155;seq<=2162;++seq) {
+                // S2154 pixels are repeated intentionally: following identities,
+                // timestamps, picture marker and UI addition are modeled.
+                auto frame=recorded;
+                frame.FillRectangle(300,500,316,516,300+int(seq%31));
+                const bool addedUi=seq==2158;
+                if(addedUi)frame.FillRectangle(24,1980,32,1988,700);
+                auto source=frame.P010Source();source.range=AnalysisLumaRange::Limited;
+                source.encoding=VideoFrameEncoding(14);source.colorspace=ColorSpace(4);
+                ActivePictureFrameIdentity id{1,seq,seq+51,370076433+(seq-2154)*166833,
+                    6417685342305713284ull,3,1,17712632399396405480ull};
+                SubtitleBoxObservation key{};key.identity=id;key.width=3840;key.height=2160;
+                key.policyGeneration=2;key.continuityGeneration=6;key.scriptHint=SubtitleScriptHint::Latin;
+                key.nearBarDistance=20;key.sharedPicture.required=true;key.sharedPicture.identity=id;
+                key.sharedPicture.bounds=base;
+                worker.BeginSourceWindow(id);
+                const bool due=InputFrameAnalysisDue(fps,seq);
+                SubtitleBoxObservation observed;
+                SubtitleBoxPreview preview;
+                bool pendingOk=false;
+                if(due) {
+                    const auto native=ExperimentalAspect::MeasureActiveTrial(source,id);
+                    worker.Submit(key,[source,key,native,id,fps](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& prior) {
+                        return sampler.Measure(source,key,prior,fps,native,true,&id);
+                    });
+                    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                    while(!worker.TryRead(key,observed,false,&source)) {
+                        Assert::IsTrue(std::chrono::steady_clock::now()<deadline,L"Current optional worker did not finish in this offline test.");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                    Assert::IsTrue(SameAnalysisFrameIdentity(observed.identity,id));
+                    auto stale=key; ++stale.identity.acceptedSequence;stale.sharedPicture.identity=stale.identity;
+                    SubtitleBoxObservation wrong;
+                    staleRejected &= !worker.TryRead(stale,wrong,false,&source);
+                    preview=SubtitleBoxLookahead::Resolve(&observed,1,2,6);
+                } else {
+                    Assert::IsFalse(worker.TryRead(key,observed,false,&source));
+                    preview=SubtitleBoxLookahead::Resolve(&key,1,2,6);
+                    if(SubtitleAbsenceIsUnknown(preview.current))++skippedUnknown;
+                    pendingOk=pending.Resolve(preview,source,frameMs,250);
+                }
+                tracker.RefreshReferencePixels(preview,source);
+                const auto accepted=tracker.Consume(preview,250,frameMs,nullptr,false,pendingOk);
+                if(due && accepted.detected && !accepted.confirmationPending) {
+                    ++duePositive;
+                    pending.RememberAccepted(preview,accepted,source,frameMs,250,&tracker.AcceptedCueSeedCertificate());
+                }
+                const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{60,40,21},20),
+                    {0,260,3840,1898},20);
+                if(!due && !addedUi && pendingOk && accepted.detected && move.valid)++skippedKept;
+                AnalysisLumaSample marker;
+                Assert::IsTrue(source.Sample(300,500,marker));
+                Assert::AreEqual(300+int(seq%31),int(marker.luma),L"Each modeled source supplies its own picture pixels.");
+                if(!due && !pendingOk) {
+                    // Pending means no replacement/absence authority. Exercise
+                    // the real admission + native-detail guard on this source.
+                    const auto evidence=EvaluateActivePicturePresentationRetention(source,base);
+                    auto crop=RaisedBroadcastCropInput(base,evidence,seq);
+                    auto selected=AdmitCropPresentation({},crop,Evaluate(crop),5,&evidence);
+                    ProtectCurrentNativeMatteDetail(selected,crop,evidence,base,1,seq);
+                    const auto b=selected.presentation.sourceBounds;
+                    fallbackPreserved &= !selected.presentation.applyCrop ||
+                        (b.left<=1220 && b.right>=2620 && b.top<=2011 && b.bottom>=2048 &&
+                         (!addedUi || (b.left<=24 && b.right>=32 && b.top<=1980 && b.bottom>=1988)));
+                }
+            }
+            worker.Stop();
+            Assert::IsTrue(staleRejected);
+            Assert::AreEqual(4,skippedUnknown);
+            Assert::IsTrue(fallbackPreserved,L"Unknown replacement must preserve current-source glyphs and UI.");
+            Assert::IsTrue(duePositive>=3,L"The exact title should be recognized on analyzed frames.");
+            Assert::IsTrue(skippedKept>=2,L"Verified unchanged current glyphs should remain placed on skipped frames; known red pending-continuation regression.");
+        }
+
         TEST_METHOD(OptionalF648ExactSourceRolesAndResets)
         {
             using namespace AlphaSourceCrop;
