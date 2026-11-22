@@ -4729,7 +4729,7 @@ struct LibplaceboVideoRenderer::Impl
         bool active=false;
         uint64_t generation=0,viewport=0,domain=0,format=0,policy=0,continuity=0;
         ActivePictureBounds base,envelope;
-    } originalPixelConflict;
+    } originalPixelConflict, classicOriginalConflict;
     bool originalFallbackLogged=false;
     ActivePictureBounds originalFallbackLoggedBounds;
     QualifiedSubtitlePresentationHoldState submittedQualifiedCaption;
@@ -18306,42 +18306,61 @@ releaseDriftBaseRetention =
                 journal.evidenceSequence = episodeInput.retentionSourceSequence;
             }
             bool classicOriginalPixels=false;
-            if (subtitlePreviewMode==SubtitlePreviewMode::None && scopeSubtitleFit &&
+            const bool classicProofEligible=subtitlePreviewMode==SubtitlePreviewMode::None && scopeSubtitleFit &&
                 ExperimentalAspect::ActiveTrialEnabled() && !fixedCropAspectConfigured &&
                 !captionTranslationInput.movingPictureTransition && !nearBlackEpisodeFullRaster &&
-                !nearBlackEpisodeRetainCrop && analysisCache && preparedQueued.IsValid() &&
-                SameSubtitlePresentationBounds(captionTranslationInput.geometry,cropInput.geometry)) {
-                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if (CurrentLookaheadMeasurement(preparedQueued,subtitleIdentity,raw)) {
-                    const auto key=MakePreparedPictureEvidenceKey(PictureKind::OriginalPixelExterior,
-                        preparedQueued,subtitleIdentity,cropInput.geometry,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,analysisCache->lookahead);
-                    if (const auto proof=analysisCache->pictureProof.Lookup(key)) {
-                        const auto& exterior=proof->originalPixelExterior;
-                        const int matteGuard=(std::max(2,height/96)+1)&~1;
-                        const bool displacedDetail=(exterior.upperDetail && exterior.upperY<cropInput.geometry.top-matteGuard) ||
-                            (exterior.lowerDetail && exterior.lowerY>=cropInput.geometry.bottom+matteGuard);
-                        if (exterior.complete && displacedDetail &&
-                            (admissionDecision.state.available || cropInput.latestObservationSupportsCrop)) {
-                            auto proposed=AlphaSourceCrop::Evaluate(captionTranslationInput);
-                            if (proposed.applyCrop) {
-                                AlphaSourceCrop::ClassicOriginalBarPresentationInput classic;
-                                classic.crop=&captionTranslationInput;classic.proposed=proposed;
-                                classic.evidence=&exterior;classic.proofBase=proof->key.base;
-                                classic.currentIdentity=subtitleIdentity;classic.proofIdentity=proof->key.identity;
-                                classic.policyGeneration=localBoundaryPolicyGeneration;
-                                classic.continuityGeneration=localBoundaryContinuityGeneration;
-                                classic.proofPolicyGeneration=proof->key.policyGeneration;
-                                classic.proofContinuityGeneration=proof->key.continuityGeneration;
-                                auto resolved=AlphaSourceCrop::ResolveClassicOriginalBarPresentation(classic);
-                                classicOriginalPixels=true;
-                                admissionDecision.blocked=!resolved.applyCrop;
-                                admissionDecision.presentation=std::move(resolved);
-                                admissionDecision.state.confirmedFitOwnership={};
-                                admissionDecision.state.outwardPresentationAvailable=false;
-                            }
-                        }
+                !nearBlackEpisodeRetainCrop && SameSubtitlePresentationBounds(captionTranslationInput.geometry,cropInput.geometry) &&
+                (admissionDecision.state.available || cropInput.latestObservationSupportsCrop);
+            const bool sameClassicContext=classicProofEligible && classicOriginalConflict.active &&
+                classicOriginalConflict.generation==frameGeneration && classicOriginalConflict.viewport==viewportRequestSerial &&
+                classicOriginalConflict.domain==queuedAnalysisDomainKey &&
+                classicOriginalConflict.format==subtitleIdentity.sourceFormatGeneration &&
+                classicOriginalConflict.policy==localBoundaryPolicyGeneration &&
+                classicOriginalConflict.continuity==localBoundaryContinuityGeneration &&
+                SameSubtitlePresentationBounds(classicOriginalConflict.base,cropInput.geometry);
+            if (!sameClassicContext) classicOriginalConflict={};
+            if (classicProofEligible) {
+                const auto proposed=AlphaSourceCrop::Evaluate(captionTranslationInput);
+                std::shared_ptr<const PreparedPictureEvidence> proof;
+                if (analysisCache && preparedQueued.IsValid()) {
+                    const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                    if (CurrentLookaheadMeasurement(preparedQueued,subtitleIdentity,raw))
+                        proof=analysisCache->pictureProof.Lookup(MakePreparedPictureEvidenceKey(
+                            PictureKind::OriginalPixelExterior,preparedQueued,subtitleIdentity,cropInput.geometry,
+                            localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,analysisCache->lookahead));
+                }
+                const bool hasCurrentExterior=proof && proof->originalPixelExterior.complete;
+                bool displacedDetail=false;
+                if (hasCurrentExterior) {
+                    const auto& exterior=proof->originalPixelExterior;
+                    const int matteGuard=(std::max(2,height/96)+1)&~1;
+                    displacedDetail=(exterior.upperDetail && exterior.upperY<cropInput.geometry.top-matteGuard) ||
+                        (exterior.lowerDetail && exterior.lowerY>=cropInput.geometry.bottom+matteGuard);
+                    if (displacedDetail)
+                        classicOriginalConflict={true,frameGeneration,viewportRequestSerial,queuedAnalysisDomainKey,
+                            subtitleIdentity.sourceFormatGeneration,localBoundaryPolicyGeneration,
+                            localBoundaryContinuityGeneration,cropInput.geometry};
+                    else
+                        classicOriginalConflict={};
+                }
+                const bool translating=proposed.verticallyTranslated || admissionDecision.presentation.verticallyTranslated;
+                if (displacedDetail || translating || (sameClassicContext && !hasCurrentExterior)) {
+                    AlphaSourceCrop::ClassicOriginalBarPresentationInput classic;
+                    classic.crop=&captionTranslationInput;classic.proposed=proposed;
+                    classic.currentIdentity=subtitleIdentity;
+                    classic.policyGeneration=localBoundaryPolicyGeneration;
+                    classic.continuityGeneration=localBoundaryContinuityGeneration;
+                    if (hasCurrentExterior) {
+                        classic.evidence=&proof->originalPixelExterior;classic.proofBase=proof->key.base;
+                        classic.proofIdentity=proof->key.identity;classic.proofPolicyGeneration=proof->key.policyGeneration;
+                        classic.proofContinuityGeneration=proof->key.continuityGeneration;
                     }
+                    auto resolved=AlphaSourceCrop::ResolveClassicOriginalBarPresentation(classic);
+                    classicOriginalPixels=true;
+                    admissionDecision.blocked=!resolved.applyCrop;
+                    admissionDecision.presentation=std::move(resolved);
+                    admissionDecision.state.confirmedFitOwnership={};
+                    admissionDecision.state.outwardPresentationAvailable=false;
                 }
             }
             const bool protectNativeMatteDetail = classicOriginalPixels || AlphaSourceCrop::ProtectCurrentNativeMatteDetail(
@@ -18531,7 +18550,7 @@ releaseDriftBaseRetention =
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect, anamorphicScale);
             const bool retainedNativePresentation = uncertainPicture.retained && !uncertainPicture.expanded;
 			const bool nlsPresentationFailOpen = nlsRequested &&
-                (uncertainPicture.expanded || (!retainedNativePresentation &&
+                (classicOriginalPixels || uncertainPicture.expanded || (!retainedNativePresentation &&
 				(cropInput.presentationFailOpen ||
                  (cropInput.movingPictureTransition &&
                   (!cropDecision.applyCrop || cropDecision.owner != AlphaSourceCrop::DecisionOwner::MOVING_PICTURE_HOLD)) ||
