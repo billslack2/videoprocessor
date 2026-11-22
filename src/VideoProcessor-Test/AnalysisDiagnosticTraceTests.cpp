@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <AnalysisDiagnosticTrace.h>
+#include <vprenderer/MatteDecisionJournal.h>
 #include <vprenderer/MatteIncidentCapture.h>
 
 #include <atomic>
@@ -212,6 +213,42 @@ namespace Tests
             Sleep(30);
             Assert::IsFalse(fixture.trace->Status().recording);
             Assert::IsTrue(CapturePath(*fixture.trace)==path);
+        }
+
+        TEST_METHOD(MatteJournalEmitsOnPoseGuardAndDistinctFreshEvidence)
+        {
+            using namespace MatteDecisionJournal;
+            Identity first;
+            first.generation = 1; first.sequence = 10; first.domain = 3;
+            first.viewport = 4; first.policy = 5; first.continuity = 6;
+            Identity next = first;
+            next.sequence = 11;
+            Assert::IsTrue(IsSelectedSnapshot(true, false, first, first));
+            Assert::IsFalse(IsSelectedSnapshot(true, true, first, first));
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            Assert::IsFalse(IsSelectedSnapshot(false, false, first, first));
+            next = first; ++next.sourceFormat;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.sourceFrame;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.timestamp;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.viewport;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.policy;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.continuity;
+            Assert::IsFalse(IsSelectedSnapshot(true, false, first, next));
+            next = first; ++next.sequence;
+            Assert::IsTrue(ShouldEmit(true, Guard::None, Guard::None, first, first));
+            Assert::IsFalse(ShouldEmit(false, Guard::Held, Guard::Held, next, first));
+            Assert::IsTrue(ShouldEmit(false, Guard::Held, Guard::Current, next, first));
+            Assert::IsTrue(ShouldEmit(false, Guard::Current, Guard::Current, next, first));
+            Assert::IsFalse(ShouldEmit(false, Guard::Current, Guard::Current, first, first));
+            Assert::IsTrue(ShouldEmit(false, Guard::Unknown, Guard::Current, next, first));
+            next = first;
+            ++next.domain;
+            Assert::IsTrue(ShouldEmit(false, Guard::Current, Guard::Current, next, first));
         }
 
         TEST_METHOD(MatteIncidentsPreserveSubmittedIdentityAndActualBytes)

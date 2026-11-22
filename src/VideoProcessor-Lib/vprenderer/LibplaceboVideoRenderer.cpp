@@ -6,6 +6,7 @@
 #include "ExperimentalAspectActive.h"
 #include "OutputFrameStamp.h"
 #include "MatteIncidentCapture.h"
+#include "MatteDecisionJournal.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -4549,6 +4550,13 @@ struct LibplaceboVideoRenderer::Impl
 {
     MatteIncidentCapture matteIncidentCapture{MatteIncidentCapture::EnvironmentPath()};
     uint64_t matteIncidentNextMissLog = 0;
+    const bool matteJournalEnabled = []() noexcept {
+        char value[2] = {};
+        return GetEnvironmentVariableA("VP_MATTE_JOURNAL", value, sizeof(value)) == 1 && value[0] == '1';
+    }();
+    uint64_t matteJournalSequence = 0;
+    MatteDecisionJournal::Guard matteJournalPreviousGuard = MatteDecisionJournal::Guard::Unknown;
+    MatteDecisionJournal::Identity matteJournalPreviousIdentity{};
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
@@ -4726,7 +4734,25 @@ struct LibplaceboVideoRenderer::Impl
     };
     std::array<SubtitlePresentationPacket,8> subtitlePresentationPackets{};
 
+    struct MatteJournalSnapshot {
+        bool available = false;
+        MatteDecisionJournal::Identity identity{};
+        MatteDecisionJournal::Guard guard = MatteDecisionJournal::Guard::Unknown;
+        ActivePictureBounds measured{}, base{}, visible{}, proposed{}, admitted{};
+        bool measuredAvailable = false, visibleAvailable = false;
+        bool analysisValid = false, presentationValid = false, bandsSafe = false;
+        bool contained = false, paired = false, exteriorVerified = false;
+        bool topNative = false, bottomNative = false, guardReturned = false;
+        bool proposedBlocked = false, admittedBlocked = false, uncertainRetained = false;
+        int measuredClassification = 0, proposedOwner = 0, admittedOwner = 0;
+        int topX = -1, topY = -1, bottomX = -1, bottomY = -1;
+        uint64_t evidenceGeneration = 0, evidenceSequence = 0;
+        bool nlsRequested = false;
+        char proposedReason[128] = {}, admittedReason[128] = {};
+    };
+
     struct TemporalPresentationSnapshot {
+        MatteJournalSnapshot matteJournal{};
         bool matteProtectMargin=false;
         ActivePictureBounds matteProtectBase{};
         uint64_t matteEvidenceGeneration=0, matteEvidenceSequence=0, matteEvidenceDomain=0;
@@ -15998,6 +16024,7 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationRequested=false;
         bool temporalPolicyTranslationPoseEligible=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
+        MatteJournalSnapshot temporalPolicyJournal{};
         bool temporalPolicyMatteMargin=false;
         ActivePictureBounds temporalPolicyMatteBase{};
         uint64_t temporalPolicyMatteGeneration=0, temporalPolicyMatteSequence=0, temporalPolicyMatteDomain=0;
@@ -16082,7 +16109,7 @@ struct LibplaceboVideoRenderer::Impl
              &temporalPolicyDrift, &temporalPolicyVerticalInput,
              &temporalPolicyRequestedTranslation, &temporalPolicyDriftDurationMs,
              &temporalPolicyRoutedTranslation, &temporalPolicyTranslationRequested,
-             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicyMatteMargin,
+             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicyJournal, &temporalPolicyMatteMargin,
              &temporalPolicyMatteBase, &temporalPolicyMatteGeneration, &temporalPolicyMatteSequence, &temporalPolicyMatteDomain, &temporalPolicyMatteDecision,
              &temporalPolicySubmittedScopeContinuityRetention,
              &temporalPolicyOwnerUpdate, &temporalPolicyOwnerCandidate,
@@ -18052,12 +18079,68 @@ releaseDriftBaseRetention =
                 admissionDecision.presentation.reason=unknownCaptionHold.reason;
                 cropDecision=admissionDecision.presentation;
             }
+            if (matteJournalEnabled) {
+                auto& journal = temporalPolicyJournal;
+                journal = {};
+                journal.available = true;
+                journal.identity.generation = frameGeneration;
+                journal.identity.sequence = sourceSequence;
+                journal.identity.domain = queuedAnalysisDomainKey;
+                journal.identity.sourceFormat = activePictureIdentity.sourceFormatGeneration;
+                journal.identity.sourceFrame = activePictureIdentity.sourceFrameNumber;
+                journal.identity.timestamp = activePictureIdentity.captureTimestamp;
+                journal.identity.viewport = viewportRequestSerial;
+                journal.identity.policy = localBoundaryPolicyGeneration;
+                journal.identity.continuity = localBoundaryContinuityGeneration;
+                journal.measured = recoveryInput.observation;
+                journal.measuredAvailable = recoveryInput.observationAvailable;
+                journal.measuredClassification = static_cast<int>(recoveryInput.observationClassification);
+                journal.base = cropInput.geometry;
+                journal.proposed = admissionDecision.presentation.sourceBounds;
+                journal.proposedOwner = static_cast<int>(admissionDecision.presentation.owner);
+                journal.proposedBlocked = admissionDecision.blocked;
+                journal.uncertainRetained = uncertainPicture.retained;
+                journal.nlsRequested = nlsRequested;
+                AnalysisTraceText(journal.proposedReason, admissionDecision.presentation.reason.c_str());
+                const auto& retention = relocatedCaptionQualified ? presentationRetention : latestCropRetentionEvidence;
+                journal.analysisValid = retention.analysisValid;
+                journal.presentationValid = retention.presentationValid;
+                journal.bandsSafe = retention.excludedBandsPixelSafe;
+                journal.contained = retention.proposedBoundsContained;
+                journal.visibleAvailable = retention.outwardVisibleBoundsAvailable;
+                journal.visible = retention.outwardVisibleBounds;
+                journal.paired = retention.pairedRaisedEdgeContrast;
+                journal.exteriorVerified = retention.raisedMatteExteriorVerified;
+                journal.topNative = retention.visibleTop.nativePixelDetail;
+                journal.bottomNative = retention.visibleBottom.nativePixelDetail;
+                journal.topX = retention.visibleTop.nativePixelX;
+                journal.topY = retention.visibleTop.nativePixelY;
+                journal.bottomX = retention.visibleBottom.nativePixelX;
+                journal.bottomY = retention.visibleBottom.nativePixelY;
+                journal.evidenceGeneration = episodeInput.retentionSourceGeneration;
+                journal.evidenceSequence = episodeInput.retentionSourceSequence;
+            }
             const bool protectNativeMatteDetail = AlphaSourceCrop::ProtectCurrentNativeMatteDetail(
                 admissionDecision,cropInput,relocatedCaptionQualified ? presentationRetention : latestCropRetentionEvidence,
                 episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
                 &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
                 queuedAnalysisDomainKey);
             const bool preserveCurrentPixels = protectNativeMatteDetail || uncertainPicture.currentBarContentProtected;
+            if (matteJournalEnabled) {
+                auto& journal = temporalPolicyJournal;
+                journal.admitted = admissionDecision.presentation.sourceBounds;
+                journal.admittedOwner = static_cast<int>(admissionDecision.presentation.owner);
+                journal.admittedBlocked = admissionDecision.blocked;
+                journal.guardReturned = protectNativeMatteDetail;
+                const auto& reason = admissionDecision.presentation.reason;
+                journal.guard = admissionDecision.blocked ? MatteDecisionJournal::Guard::Blocked :
+                    !protectNativeMatteDetail ? MatteDecisionJournal::Guard::None :
+                    reason == "retaining raised matte margin around current crop" ? MatteDecisionJournal::Guard::Held :
+                    (reason == "acquired scope with verified raised matte margin" ||
+                     reason == "current detail inside verified raised matte margin") ? MatteDecisionJournal::Guard::Current :
+                    MatteDecisionJournal::Guard::Other;
+                AnalysisTraceText(journal.admittedReason, reason.c_str());
+            }
             temporalPolicyMatteMargin = protectNativeMatteDetail && admissionDecision.presentation.raisedMatteMargin;
             if (temporalPolicyMatteMargin) {
                 temporalPolicyMatteBase = cropInput.geometry;
@@ -19515,6 +19598,8 @@ releaseDriftBaseRetention =
                     sourceSnapshot.translationRequested=temporalPolicyTranslationRequested;
                     sourceSnapshot.translationPoseEligible=temporalPolicyTranslationPoseEligible;
                     sourceSnapshot.presentation=temporalPolicyPresentation;
+                    if (matteJournalEnabled)
+                        sourceSnapshot.matteJournal=temporalPolicyJournal;
                     sourceSnapshot.matteProtectMargin=temporalPolicyMatteMargin;
                     sourceSnapshot.matteProtectBase=temporalPolicyMatteBase;
                     sourceSnapshot.matteEvidenceGeneration=temporalPolicyMatteGeneration;
@@ -20597,6 +20682,77 @@ releaseDriftBaseRetention =
                 static_cast<int>(std::lround(renderImage.crop.x1)),
                 static_cast<int>(std::lround(renderImage.crop.y1)),
                 width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            // Only journal the snapshot belonging to the selected successful
+            // submission. A queued neighbour never supplies missing evidence.
+            if (matteJournalEnabled) {
+                const uint64_t selectedSequence = temporalRenderer.Active()
+                    ? temporalRenderer.SelectedPacketSequence() : sourceSequence;
+                const auto& candidateJournal = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteJournal : temporalPolicyJournal;
+                const auto& id = candidateJournal.identity;
+                const auto& selectedSource = selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipIdentity : subtitleIdentity;
+                MatteDecisionJournal::Identity selectedIdentity;
+                selectedIdentity.generation = scopeAnchorCommit.sourceGeneration;
+                selectedIdentity.sequence = selectedSequence;
+                selectedIdentity.domain = selectedSource.analysisDomainKey;
+                selectedIdentity.sourceFormat = selectedSource.sourceFormatGeneration;
+                selectedIdentity.sourceFrame = selectedSource.sourceFrameNumber;
+                selectedIdentity.timestamp = selectedSource.captureTimestamp;
+                selectedIdentity.viewport = scopeAnchorCommit.presentationEpoch;
+                selectedIdentity.policy = selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipPolicy : localBoundaryPolicyGeneration;
+                selectedIdentity.continuity = selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipContinuity : localBoundaryContinuityGeneration;
+                const bool snapshotCurrent =
+                    MatteDecisionJournal::IsSelectedSnapshot(candidateJournal.available,
+                        temporalRenderer.Mixing(), id, selectedIdentity) &&
+                    selectedSource.acceptedSequence == selectedSequence &&
+                    selectedSource.transportGeneration == selectedIdentity.generation &&
+                    selectedSource.rendererGeneration == selectedIdentity.generation &&
+                    selectedSource.viewportGeneration == selectedIdentity.viewport &&
+                    (!temporalRenderer.Active() || selectedPresentationValid) &&
+                    (!selectedPresentationValid || selectedPresentationForCommit.sourceSequence == selectedSequence);
+                MatteJournalSnapshot journal;
+                if (snapshotCurrent)
+                    journal = candidateJournal;
+                const bool evidenceCurrent = snapshotCurrent && journal.analysisValid && journal.presentationValid &&
+                    journal.evidenceGeneration == id.generation && journal.evidenceSequence == id.sequence;
+                auto guard = snapshotCurrent ? journal.guard : MatteDecisionJournal::Guard::Unknown;
+                if ((guard == MatteDecisionJournal::Guard::Current || guard == MatteDecisionJournal::Guard::Blocked) &&
+                    !evidenceCurrent)
+                    guard = MatteDecisionJournal::Guard::Unknown;
+                if (MatteDecisionJournal::ShouldEmit(submittedGeometryChanged, guard, matteJournalPreviousGuard,
+                    journal.identity, matteJournalPreviousIdentity)) {
+                    ++matteJournalSequence;
+                    const auto& actual = scopeAnchorCommit.submittedBounds;
+                    const int translation = selectedPresentationValid
+                        ? selectedPresentationForCommit.routedTranslation : temporalPolicyRoutedTranslation;
+                    DebugLog::Log("Matte decision journal: event=%llu known=%d queued=%llu selected=%llu G=%llu S=%llu fmt=%llu frame=%llu ts=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu guard=%u guard_returned=%d evidence_current=%d evidence_G=%llu evidence_S=%llu measured_available=%d measured_class=%d measured=%d,%d-%d,%d base=%d,%d-%d,%d visible_available=%d visible=%d,%d-%d,%d analysis=%d presentation=%d bands_safe_sampled=%d contained=%d paired=%d exterior=%d native_top=%d:%d,%d native_bottom=%d:%d,%d uncertain_retained=%d proposed=%d,%d-%d,%d proposed_owner=%d proposed_blocked=%d proposed_reason=\"%s\" admitted=%d,%d-%d,%d admitted_owner=%d admitted_blocked=%d admitted_reason=\"%s\" actual=%d,%d-%d,%d final_owner=%d target=%.2f,%.2f-%.2f,%.2f optional_fill_recorded=%d nls_requested=%d nls_owner=unknown translation=%d",
+                        matteJournalSequence, snapshotCurrent ? 1 : 0, sourceSequence, selectedSequence,
+                        journal.identity.generation,journal.identity.sequence,journal.identity.sourceFormat,
+                        journal.identity.sourceFrame,journal.identity.timestamp,journal.identity.viewport,
+                        journal.identity.domain,journal.identity.policy,journal.identity.continuity,
+                        static_cast<unsigned>(guard),snapshotCurrent ? (journal.guardReturned ? 1 : 0) : -1,evidenceCurrent ? 1 : 0,journal.evidenceGeneration,journal.evidenceSequence,
+                        journal.measuredAvailable ? 1 : 0,journal.measuredClassification,
+                        journal.measured.left,journal.measured.top,journal.measured.right,journal.measured.bottom,
+                        journal.base.left,journal.base.top,journal.base.right,journal.base.bottom,
+                        journal.visibleAvailable ? 1 : 0,journal.visible.left,journal.visible.top,journal.visible.right,journal.visible.bottom,
+                        journal.analysisValid ? 1 : 0,journal.presentationValid ? 1 : 0,journal.bandsSafe ? 1 : 0,
+                        journal.contained ? 1 : 0,journal.paired ? 1 : 0,journal.exteriorVerified ? 1 : 0,
+                        journal.topNative ? 1 : 0,journal.topX,journal.topY,
+                        journal.bottomNative ? 1 : 0,journal.bottomX,journal.bottomY,journal.uncertainRetained ? 1 : 0,
+                        journal.proposed.left,journal.proposed.top,journal.proposed.right,journal.proposed.bottom,
+                        journal.proposedOwner,journal.proposedBlocked ? 1 : 0,journal.proposedReason,
+                        journal.admitted.left,journal.admitted.top,journal.admitted.right,journal.admitted.bottom,
+                        journal.admittedOwner,journal.admittedBlocked ? 1 : 0,journal.admittedReason,
+                        actual.left,actual.top,actual.right,actual.bottom,static_cast<int>(scopeAnchorCommit.selectedOwner),
+                        target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1,
+                        scopeAnchorCommit.selectedAdmission.optionalFillApplied ? 1 : 0,snapshotCurrent ? (journal.nlsRequested ? 1 : 0) : -1,translation);
+                }
+                matteJournalPreviousGuard = guard;
+                matteJournalPreviousIdentity = journal.identity;
+            }
             // Optional incident capture: selected output and prepared source must
             // describe this exact packet. Disk I/O and frame bytes stay on the
             // bounded writer; the renderer retains only an immutable owner.
