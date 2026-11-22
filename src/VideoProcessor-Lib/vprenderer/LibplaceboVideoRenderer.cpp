@@ -15157,13 +15157,9 @@ struct LibplaceboVideoRenderer::Impl
                 }
                 if(move.valid && currentSubtitlePreview.current.pendingExactBandGlyphsVerified) {
                     const auto& verified=currentSubtitlePreview.current;
-                    auto covered=[&](const SubtitleBoxRect& rect) {
-                        return !rect.Valid() || (rect.left>=0 && rect.right<=verified.width && rect.top>=0 &&
-                            rect.bottom<=verified.height && (rect.bottom<=verified.verifiedTopEnd ||
-                            rect.top>=verified.verifiedBottomStart));
-                    };
-                    if(!move.pendingGlyphsOnly || !covered(move.source) || !covered(move.content) ||
-                        !covered(move.destination) || !covered(move.pictureCapture) || move.generatedCleanup.Valid())
+                    if(!move.pendingGlyphsOnly || !verified.CoversComparedPixels(move.source) ||
+                        !verified.CoversComparedPixels(move.content) || !verified.CoversComparedPixels(move.destination) ||
+                        !verified.CoversComparedPixels(move.pictureCapture) || move.generatedCleanup.Valid())
                         move={};
                 }
                 const auto& priorLayout=subtitleLoggedLayout;

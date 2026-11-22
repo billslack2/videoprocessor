@@ -62,6 +62,37 @@ public:
             matchRows(chroma,source.chromaRowBytes,m_bottomStart/divisor,m_height/divisor);
     }
 
+    // Compare only this native rectangle and the chroma samples shared with it.
+    // Snapshot rows are tightly packed; the current source may have padding.
+    // No source byte outside the captured bands becomes evidence.
+    bool MatchesRect(const AnalysisLumaSource& source,const SubtitleBoxRect& r) const {
+        if(!Covers(r) || !Supported(source) || source.width!=m_width || source.height!=m_height ||
+            source.format!=m_format || source.encoding!=m_encoding || source.colorspace!=m_colorspace ||
+            source.range!=m_range)return false;
+        const size_t row=size_t(m_width)*2;
+        const int divisor=m_format==AnalysisLumaFormat::P010?2:1;
+        const size_t lumaRows=size_t(m_topEnd)+size_t(m_height-m_bottomStart);
+        const auto storedRow=[](int y,int topEnd,int bottomStart)->size_t {
+            return y<topEnd?size_t(y):size_t(topEnd)+size_t(y-bottomStart);
+        };
+        const size_t left=size_t(r.left)*2,bytes=size_t(r.right-r.left)*2;
+        for(int y=r.top;y<r.bottom;++y)
+            if(std::memcmp(m_bytes.data()+storedRow(y,m_topEnd,m_bottomStart)*row+left,
+                source.data+size_t(y)*source.rowBytes+left,bytes)!=0)return false;
+        // Each interleaved UV pair is shared by two horizontal luma pixels;
+        // P010 also shares it between two adjacent luma rows.
+        const size_t chromaLeft=size_t(r.left & ~1)*2;
+        const size_t chromaRight=size_t((r.right+1)&~1)*2;
+        const auto* chroma=source.data+source.rowBytes*size_t(source.height);
+        const int chromaTop=r.top/divisor,chromaBottom=(r.bottom+divisor-1)/divisor;
+        for(int y=chromaTop;y<chromaBottom;++y) {
+            const size_t index=lumaRows+storedRow(y,m_topEnd/divisor,m_bottomStart/divisor);
+            if(std::memcmp(m_bytes.data()+index*row+chromaLeft,
+                chroma+size_t(y)*source.chromaRowBytes+chromaLeft,chromaRight-chromaLeft)!=0)return false;
+        }
+        return true;
+    }
+
     bool Covers(const SubtitleBoxRect& r) const {
         return m_width>0 && r.Valid() && r.left>=0 && r.right<=m_width &&
             r.top>=0 && r.bottom<=m_height && (r.bottom<=m_topEnd || r.top>=m_bottomStart ||

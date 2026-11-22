@@ -1034,6 +1034,50 @@ public:
         source.format=AnalysisLumaFormat::NativeRgb;
         Assert::IsFalse(snapshot.Capture(source,24,66));
     }
+    TEST_METHOD(PlanarBandRectIncludesSharedChromaAndIgnoresUnrelatedMotion) {
+        for(auto format : {AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,
+            AnalysisLumaFormat::DecodedDolbyVision422}) {
+            constexpr int width=16,height=12,lumaStride=20,chromaStride=22;
+            const int divisor=format==AnalysisLumaFormat::P010?2:1;
+            std::vector<uint16_t> pixels(size_t(lumaStride)*height+
+                size_t(chromaStride)*(height/divisor),uint16_t(64<<6));
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*2;source.width=width;source.height=height;
+            source.rowBytes=lumaStride*2;source.chromaRowBytes=chromaStride*2;source.format=format;
+            SubtitlePlanarBandSnapshot snapshot;Assert::IsTrue(snapshot.Capture(source,4,8));
+            const SubtitleBoxRect r{5,1,9,4};
+            Assert::IsTrue(snapshot.MatchesRect(source,r));
+            Assert::IsFalse(snapshot.MatchesRect(source,{5,3,9,5}));
+            Assert::IsFalse(snapshot.MatchesRect(source,{5,4,9,8}));
+            // Luma outside the ROI and stride padding are intentionally irrelevant.
+            pixels[2*lumaStride+12]^=64;pixels[2*lumaStride+width]^=64;
+            Assert::IsTrue(snapshot.MatchesRect(source,r));
+            pixels[2*lumaStride+6]^=64;Assert::IsFalse(snapshot.MatchesRect(source,r));
+            pixels[2*lumaStride+6]^=64;
+            const size_t chroma=size_t(lumaStride)*height;
+            // x=4 is outside the rectangle but shares UV with its first odd x.
+            pixels[chroma+size_t(1/divisor)*chromaStride+4]^=64;
+            Assert::IsFalse(snapshot.MatchesRect(source,r));
+            pixels[chroma+size_t(1/divisor)*chromaStride+4]^=64;
+            // A different UV pair and chroma row padding remain outside evidence.
+            pixels[chroma+size_t(1/divisor)*chromaStride+12]^=64;
+            pixels[chroma+size_t(1/divisor)*chromaStride+width]^=64;
+            Assert::IsTrue(snapshot.MatchesRect(source,r));
+            if(divisor==2) {
+                // y=0 shares chroma with the first ROI row y=1.
+                pixels[chroma+4]^=64;Assert::IsFalse(snapshot.MatchesRect(source,r));
+                pixels[chroma+4]^=64;
+            }
+            Assert::IsTrue(snapshot.MatchesRect(source,{5,9,9,11}));
+            auto wrong=source;wrong.range=AnalysisLumaRange::Full;
+            Assert::IsFalse(snapshot.MatchesRect(wrong,r));
+            wrong=source;wrong.dataBytes=1;Assert::IsFalse(snapshot.MatchesRect(wrong,r));
+            Assert::IsTrue(snapshot.Capture(source,6,6));
+            Assert::IsTrue(snapshot.MatchesRect(source,{5,3,9,9}),L"Adjacent bands cover one continuous region.");
+            pixels[7*lumaStride+6]^=64;
+            Assert::IsFalse(snapshot.MatchesRect(source,{5,3,9,9}));
+        }
+    }
     TEST_METHOD(PendingSeedNeverPromotesUnacceptedDetectorRows) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
         auto accepted=ready.text;accepted.lineCount=2;

@@ -1890,6 +1890,10 @@ namespace VideoProcessorTest
                 auto frameOwner=std::make_shared<P010Frame>(recorded);
                 auto& frame=*frameOwner;
                 frame.FillRectangle(300,500,316,516,300+int(seq%31));
+                // The movie can also move beside or underneath the proposed destination.
+                // Only the latter may block placement; neither changes the source cue.
+                if(seq==2156)frame.FillRectangle(100,1800,116,1816,700);
+                if(seq==2160)frame.FillRectangle(1800,1800,1816,1816,700);
                 const bool addedUi=seq==2158;
                 if(addedUi)frame.FillRectangle(24,1980,32,1988,700);
                 auto source=frame.P010Source();source.backingOwner=frameOwner;source.range=AnalysisLumaRange::Limited;
@@ -1970,7 +1974,13 @@ namespace VideoProcessorTest
                 }
                 const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{60,40,21},20),
                     {0,260,3840,1898},20);
-                if(!due && !addedUi && pendingOk && accepted.detected && move.valid)++skippedKept;
+                if(!due && !addedUi) {
+                    Assert::IsTrue(pendingOk && accepted.detected && move.valid,
+                        L"Movie motion alone cannot withdraw an unchanged bar cue.");
+                    const bool destClear=preview.current.CoversComparedPixels(move.destination);
+                    Assert::AreEqual(seq!=2160,destClear,L"Only motion intersecting the placement blocks the pending move.");
+                    if(destClear)++skippedKept;
+                }
                 AnalysisLumaSample marker;
                 Assert::IsTrue(source.Sample(300,500,marker));
                 Assert::AreEqual(300+int(seq%31),int(marker.luma),L"Each modeled source supplies its own picture pixels.");
@@ -1996,7 +2006,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(4,skippedUnknown);
             Assert::IsTrue(fallbackPreserved,L"Unknown replacement must preserve current-source glyphs and UI.");
             Assert::IsTrue(duePositive>=3,L"The exact title should be recognized on analyzed frames.");
-            Assert::IsTrue(skippedKept>=2,L"Verified unchanged current glyphs should remain placed on skipped frames; known red pending-continuation regression.");
+            Assert::IsTrue(skippedKept>=2,L"The two unchanged placements should survive movie motion away from the destination.");
         }
 
         TEST_METHOD(OptionalF648ExactSourceRolesAndResets)

@@ -84,6 +84,7 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture,currentPair);
         result.analysisStride=key.analysisStride;
+        result.compareSkippedCueBands=key.compareSkippedCueBands;
         // Presentation consumes the AR owner's planes. Keep the existing
         // independent subtitle-assisted AR measurement separate: it may report
         // a real source aperture change but never replaces subtitle geometry.
@@ -134,6 +135,7 @@ public:
                     caption->nearBarDistance = physical.nearBarDistance;
                     caption->optimizationMode = physical.optimizationMode;
                     caption->analysisStride = result.analysisStride;
+                    caption->compareSkippedCueBands = result.compareSkippedCueBands;
                     caption->analyzed = true;
                     caption->barAuthority = true;
                     caption->barEvidence = physical.barEvidence;
@@ -310,7 +312,7 @@ public:
         bandSeed={};
         if (preparePublishedCaption && key.compareSkippedCueBands && key.analysisStride==2 && result.analyzed &&
             !result.discontinuity && !result.inspectionCandidateUsed && result.sharedNativeGeometry &&
-            result.barAuthority && result.text.detected && !result.text.held && !result.text.workLimit &&
+            result.subtitleOnlyCurrentPairedSupport && result.barAuthority && result.text.detected && !result.text.held && !result.text.workLimit &&
             result.pictureTop>0 && result.pictureBottom<source.height && result.text.bounds.Valid()) {
             const bool top=result.text.bounds.bottom<=result.pictureTop;
             const bool bottom=result.text.bounds.top>=result.pictureBottom;
@@ -321,6 +323,7 @@ public:
                 bandTopEnd=(result.pictureTop+(top?inset:2)+1)&~1;
                 bandBottomStart=(result.pictureBottom-(bottom?inset:2))&~1;
                 if (bandSnapshot.Capture(source,bandTopEnd,bandBottomStart)) {
+                    bandPictureTop=result.pictureTop;bandPictureBottom=result.pictureBottom;
                     bandSeed=key.identity;bandPolicy=key.policyGeneration;
                     bandContinuity=key.continuityGeneration;bandScript=key.scriptHint;
                     bandNear=key.nearBarDistance;bandOptimization=key.optimizationMode;
@@ -343,7 +346,33 @@ public:
             key.policyGeneration!=bandPolicy || key.continuityGeneration!=bandContinuity ||
             key.scriptHint!=bandScript || key.nearBarDistance!=bandNear || key.optimizationMode!=bandOptimization) return result;
         result.bandComparisonComplete=true;
-        if (bandSnapshot.Matches(source)) {
+        bool verified=bandSnapshot.Matches(source);
+        if(!verified && bandSnapshot.MatchesRect(source,{0,0,key.width,bandPictureTop}) &&
+            bandSnapshot.MatchesRect(source,{0,bandPictureBottom,key.width,key.height})) {
+            // Every excluded pixel still matches. Record changes inside the
+            // picture separately so unrelated movie motion cannot veto the cue.
+            auto changes=std::make_shared<std::vector<SubtitleBoxRect>>();
+            auto compareStrip=[&](int top,int bottom) {
+                constexpr int tile=64;
+                for(int y=top;y<bottom;y+=tile) {
+                    int run=-1;
+                    for(int x=0;x<key.width;x+=tile) {
+                        const SubtitleBoxRect area{x,y,(std::min)(key.width,x+tile),(std::min)(bottom,y+tile)};
+                        if(!bandSnapshot.MatchesRect(source,area)) {
+                            if(run<0)run=x;
+                        } else if(run>=0) {
+                            changes->push_back({run,y,x,area.bottom});run=-1;
+                        }
+                    }
+                    if(run>=0)changes->push_back({run,y,key.width,(std::min)(bottom,y+tile)});
+                }
+            };
+            compareStrip(bandPictureTop,bandTopEnd);
+            compareStrip(bandBottomStart,bandPictureBottom);
+            result.changedPictureTiles=std::move(changes);
+            verified=true;
+        }
+        if (verified) {
             result.matchingBandTemplate=bandSeed;
             result.bandComparedSource=source;result.bandComparedOwner=source.backingOwner;
             result.bandComparedSource.backingOwner.reset();
@@ -359,6 +388,7 @@ private:
     uint64_t bandPolicy=0,bandContinuity=0;
     SubtitleScriptHint bandScript=SubtitleScriptHint::Latin;
     int bandTopEnd=0,bandBottomStart=0,bandNear=0,bandOptimization=0;
+    int bandPictureTop=0,bandPictureBottom=0;
     SubtitleBoxDetector m_scanner;
     std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
@@ -1019,6 +1049,7 @@ public:
             pending.pendingBarGlyphsLocal=false;pending.pendingExactBandGlyphsVerified=true;
             pending.bandComparisonComplete=true;pending.matchingBandTemplate=key.matchingBandTemplate;
             pending.verifiedTopEnd=key.verifiedTopEnd;pending.verifiedBottomStart=key.verifiedBottomStart;
+              pending.changedPictureTiles=key.changedPictureTiles;
             pending.bandComparedSource=key.bandComparedSource;pending.bandComparedOwner=key.bandComparedOwner;
             pending.discontinuity=false;pending.analysisRefresh=false;
             pending.barEvidence={};pending.barAuthority=false;pending.independentBarAnalysis=false;

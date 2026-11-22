@@ -128,6 +128,18 @@ struct SubtitleBoxObservation
     bool bandComparisonComplete=false, pendingExactBandGlyphsVerified=false;
     ActivePictureFrameIdentity matchingBandTemplate{};
     int verifiedTopEnd=0, verifiedBottomStart=0;
+    // The worker can verify the entire exterior while the movie changes in a
+    // neighboring placement strip. Only changes intersecting the actual move matter.
+    std::shared_ptr<const std::vector<SubtitleBoxRect>> changedPictureTiles;
+    bool CoversComparedPixels(const SubtitleBoxRect& rect) const {
+        if(!rect.Valid())return true;
+        if(rect.left<0 || rect.right>width || rect.top<0 || rect.bottom>height ||
+            (rect.bottom>verifiedTopEnd && rect.top<verifiedBottomStart))return false;
+        if(changedPictureTiles) for(const auto& changed:*changedPictureTiles)
+            if(rect.left<changed.right && rect.right>changed.left &&
+               rect.top<changed.bottom && rect.bottom>changed.top)return false;
+        return true;
+    }
     AnalysisLumaSource bandComparedSource{};
     std::weak_ptr<const void> bandComparedOwner; // Borrowed descriptor; never retain or dereference its storage.
     SubtitleScriptHint scriptHint=SubtitleScriptHint::Latin;
