@@ -5103,6 +5103,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
     // Fresh classified bar evidence, independent of retained/extreme FIT state.
     AlphaSourceCrop::VerticalBarContentInput scopeCurrentVerticalContent{};
+    ActivePictureMeasurementCache::VerticalBarContent scopeCurrentVerticalMeasurement{};
     AlphaSourceCrop::VerticalBarContentDecision scopeCurrentVerticalDecision{};
     ActivePictureBounds scopeCurrentVerticalBase{}, scopeCurrentVerticalBounds{};
     uint64_t scopeCurrentVerticalGeneration=0, scopeCurrentVerticalSequence=0;
@@ -6816,6 +6817,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
         scopeSubtitleAnalysisBounds={};subtitleSharedPicture={};
         scopeCurrentVerticalContent={}; scopeCurrentVerticalDecision={};
+        scopeCurrentVerticalMeasurement={};
         scopeCurrentVerticalBase={}; scopeCurrentVerticalBounds={};
         scopeCurrentVerticalGeneration=0; scopeCurrentVerticalSequence=0;
         scopeSubtitleLastAdmittedTranslation = {};
@@ -7117,6 +7119,7 @@ struct LibplaceboVideoRenderer::Impl
 				if (analysisCompleted)
 					*analysisCompleted = true;
                 scopeCurrentVerticalContent=verticalInput;
+                scopeCurrentVerticalMeasurement=content;
                 scopeCurrentVerticalDecision=verticalDecision;
                 scopeCurrentVerticalBase=trustedPicture;
                 scopeCurrentVerticalBounds=trustedPicture;
@@ -18028,28 +18031,26 @@ releaseDriftBaseRetention =
                         coldCaptionDecision.presentation.sourceBounds,
                         coldCaptionDecision.presentation.sourceBounds);
             }
-            // The current dense bar pass supplies pixel-preservation evidence,
-            // independent of its later caption/translation ownership decision.
-            // Never substitute coarse full-raster occupancy or stale content.
-            if (subtitleBarAnalysisCompleted && scopeCurrentVerticalGeneration==frameGeneration &&
-                scopeCurrentVerticalSequence==sourceSequence &&
-                sameNative(scopeCurrentVerticalBase,cropInput.geometry)) {
-                recoveryInput.barInspectionCompleted = true;
-                const bool upper=scopeCurrentVerticalContent.upperContent &&
-                    scopeCurrentVerticalBounds.top<cropInput.geometry.top;
-                const bool lower=scopeCurrentVerticalContent.lowerContent &&
-                    scopeCurrentVerticalBounds.bottom>cropInput.geometry.bottom;
-                if (upper || lower) {
-                    auto content=scopeCurrentVerticalBounds;
-                    if (!upper) content.top=cropInput.geometry.bottom;
-                    if (!lower) content.bottom=cropInput.geometry.top;
-                    recoveryInput.currentBarContentAvailable=true;
-                    recoveryInput.currentBarContentBase=cropInput.geometry;
-                    recoveryInput.currentBarContentBounds=content;
-                    recoveryInput.currentBarContentGeneration=frameGeneration;
-                    recoveryInput.currentBarContentSequence=sourceSequence;
-                    recoveryInput.currentBarContentEpoch=viewportRequestSerial;
-                }
+            // Both admission and the final guard use the same presentation
+            // evidence. A successfully composed subtitle can account for its
+            // original pixels only with a current, verified erasure footprint.
+            const bool denseCurrent = subtitleBarAnalysisCompleted &&
+                scopeCurrentVerticalGeneration == frameGeneration && scopeCurrentVerticalSequence == sourceSequence &&
+                sameNative(scopeCurrentVerticalBase, cropInput.geometry);
+            const auto& residual = presentationView.retention;
+            const auto recoveryBars = ArbitrateSubtitleRecoveryBars(presentationView, displayCaptionProof,
+                scopeCurrentVerticalMeasurement, denseCurrent,
+                presentationView.qualified && residual.visibleTop.available && residual.visibleTop.nativePixelDetail,
+                presentationView.qualified && residual.visibleBottom.available && residual.visibleBottom.nativePixelDetail,
+                cropInput.geometry, subtitleIdentity);
+            recoveryInput.barInspectionCompleted = recoveryBars.inspectionCompleted;
+            if (recoveryBars.upper || recoveryBars.lower) {
+                recoveryInput.currentBarContentAvailable = true;
+                recoveryInput.currentBarContentBase = cropInput.geometry;
+                recoveryInput.currentBarContentBounds = recoveryBars.bounds;
+                recoveryInput.currentBarContentGeneration = frameGeneration;
+                recoveryInput.currentBarContentSequence = sourceSequence;
+                recoveryInput.currentBarContentEpoch = viewportRequestSerial;
             }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
