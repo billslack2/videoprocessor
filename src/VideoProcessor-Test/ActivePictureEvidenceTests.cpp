@@ -1900,7 +1900,8 @@ namespace VideoProcessorTest
                 auto queuedSource=source;queuedSource.generation=id.sourceFormatGeneration;
                 SubtitleBoxObservation key{};key.identity=id;key.width=3840;key.height=2160;
                 key.policyGeneration=2;key.continuityGeneration=6;key.scriptHint=SubtitleScriptHint::Latin;
-                key.nearBarDistance=20;key.analysisStride=2;key.sharedPicture.required=true;key.sharedPicture.identity=id;
+                key.nearBarDistance=20;key.analysisStride=2;key.compareSkippedCueBands=true;
+                key.sharedPicture.required=true;key.sharedPicture.identity=id;
                 key.sharedPicture.bounds=base;
                 worker.BeginSourceWindow(id);
                 const bool due=InputFrameAnalysisDue(fps,seq);

@@ -123,7 +123,7 @@ struct SubtitleBoxObservation
     int nearBarDistance=0;
     int optimizationMode=0;
     unsigned analysisStride=1;
-    bool cadenceSkipped=false;
+    bool cadenceSkipped=false, compareSkippedCueBands=false;
     // Complete current native band comparison, independent of detector cadence.
     bool bandComparisonComplete=false, pendingExactBandGlyphsVerified=false;
     ActivePictureFrameIdentity matchingBandTemplate{};

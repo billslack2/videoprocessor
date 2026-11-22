@@ -9349,6 +9349,9 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
         key.analysisStride=fps>30.0?2u:1u;
         key.cadenceSkipped=!InputFrameAnalysisDue(fps,identity.acceptedSequence);
+        const auto subtitleMode=CurrentSubtitlePreviewMode();
+        key.compareSkippedCueBands=subtitleMode==SubtitlePreviewMode::BlackBackground ||
+            subtitleMode==SubtitlePreviewMode::GeneratedGrayBackground;
         key.identity.analysisDomainKey=prepared.domainKey;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;
         key.scriptHint=scriptHint;key.discontinuity=discontinuity;
@@ -9370,7 +9373,10 @@ struct LibplaceboVideoRenderer::Impl
         if(haveReady) {
             if(key.cadenceSkipped && ready.bandComparisonComplete &&
                 SameAnalysisFrameIdentity(ready.identity,key.identity) && ready.policyGeneration==policy &&
-                ready.continuityGeneration==continuity) return ready;
+                ready.continuityGeneration==continuity) {
+                trace(SubtitleTraceVisit::ExactResult,"read",ready.text.diagnosticReason);
+                return ready;
+            }
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint)) {
                 trace(SubtitleTraceVisit::ExactResult, "read", "compatible-current-result");
@@ -9423,7 +9429,7 @@ struct LibplaceboVideoRenderer::Impl
             DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
         }
         if (!allowSubmit || key.cadenceSkipped) {
-            if (allowSubmit && key.cadenceSkipped && subtitleMeasurementWorker.HasCadenceBandSeed())
+            if (allowSubmit && key.compareSkippedCueBands && key.cadenceSkipped && subtitleMeasurementWorker.HasCadenceBandSeed())
                 subtitleMeasurementWorker.Submit(key,[prepared,key](SubtitleMeasurementSampler& scanner,
                     const SubtitleBarTrackingReference&) { return scanner.CompareCadenceBands(prepared.source,key); });
             if (key.cadenceSkipped) trace(SubtitleTraceVisit::CadenceSkip, "schedule", "cadence-skip");

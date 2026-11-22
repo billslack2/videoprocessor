@@ -308,7 +308,7 @@ public:
         // Keep one speculative layout seed on the optional worker. Only a later
         // match to a cue actually accepted by presentation can use this result.
         bandSeed={};
-        if (preparePublishedCaption && key.analysisStride==2 && result.analyzed &&
+        if (preparePublishedCaption && key.compareSkippedCueBands && key.analysisStride==2 && result.analyzed &&
             !result.discontinuity && !result.inspectionCandidateUsed && result.sharedNativeGeometry &&
             result.barAuthority && result.text.detected && !result.text.held && !result.text.workLimit &&
             result.pictureTop>0 && result.pictureBottom<source.height && result.text.bounds.Valid()) {
@@ -335,7 +335,7 @@ public:
         const SubtitleBoxObservation& key) const {
         auto result=key;
         const auto& id=key.identity;
-        if (!key.cadenceSkipped || key.analysisStride!=2 || key.discontinuity || !HasCadenceBandSeed() ||
+        if (!key.compareSkippedCueBands || !key.cadenceSkipped || key.analysisStride!=2 || key.discontinuity || !HasCadenceBandSeed() ||
             id.acceptedSequence<=bandSeed.acceptedSequence || id.acceptedSequence-bandSeed.acceptedSequence!=1 ||
             id.captureTimestamp<=bandSeed.captureTimestamp || id.transportGeneration!=bandSeed.transportGeneration ||
             id.sourceFormatGeneration!=bandSeed.sourceFormatGeneration || id.analysisDomainKey!=bandSeed.analysisDomainKey ||
@@ -437,7 +437,7 @@ public:
             !a.sharedPicture.AvailableFor(a.identity,a.width,a.height) &&
             !b.sharedPicture.AvailableFor(b.identity,b.width,b.height);
         return SameAnalysisFrameIdentity(a.identity,b.identity) &&
-            a.analysisStride==b.analysisStride &&
+            a.analysisStride==b.analysisStride && a.compareSkippedCueBands==b.compareSkippedCueBands &&
             a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode && a.scriptHint==b.scriptHint &&
             a.policyGeneration==b.policyGeneration &&
             (a.continuityGeneration==b.continuityGeneration ||
@@ -739,7 +739,8 @@ private:
             } catch(...) {result.analyzed=false; m_bandSeedReady.store(false,std::memory_order_relaxed);}
             const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
             const auto detector=scanner.TakeDetectorDiagnostics();
-            Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
+            Trace(result,"worker-complete",result.analyzed || result.bandComparisonComplete ?
+                result.text.diagnosticReason : (result.cadenceSkipped?"no-band-comparison":"analysis-failed"));
             {
                 LifecycleEvents<2> events;
                 std::lock_guard<std::mutex> lock(m_mutex);
