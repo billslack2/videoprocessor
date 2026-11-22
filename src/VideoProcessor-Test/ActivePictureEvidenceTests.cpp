@@ -1801,6 +1801,174 @@ namespace VideoProcessorTest
             Assert::AreEqual(1910,change.presentation.sourceBounds.bottom);
         }
 
+        TEST_METHOD(OptionalF648ExactSourceRolesAndResets)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr;size_t size=0;
+            _dupenv_s(&value,&size,"VP_F648_INCIDENT_REPLAY_DIR");
+            const std::string dir=value ? value : "";std::free(value);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_F648_INCIDENT_REPLAY_DIR to replay four exact sparse source frames.");
+                return;
+            }
+            struct Source {
+                P010Frame pixels{3840,2160};
+                uint64_t generation=0,sequence=0,source=0,timestamp=0,viewport=0,domain=0;
+                bool found=false;
+            } frames[4];
+            const uint64_t generations[]={1,1,2,2},sequences[]={1209,1334,1601,1726};
+            WIN32_FIND_DATAA entry={};std::vector<std::string> sidecars;
+            HANDLE search=FindFirstFileA((dir+"\\*.txt").c_str(),&entry);
+            Assert::IsTrue(search!=INVALID_HANDLE_VALUE);
+            do {if(!(entry.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY))sidecars.push_back(dir+"\\"+entry.cFileName);}
+            while(FindNextFileA(search,&entry));FindClose(search);
+            for(const auto& file:sidecars) {
+                std::ifstream meta(file);
+                int w,h,format,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,uvPitch;std::string tag;
+                uint64_t generation,sequence,number,timestamp,formatGeneration,viewport,renderer,domain,policy,continuity;
+                int nearBar,optimization,duration,discontinuity,repeat,alignment;
+                meta>>w>>h>>pitch>>uvPitch>>format>>encoding>>colorspace>>top>>bottom>>hint>>range
+                    >>tag>>generation>>sequence>>number>>timestamp>>formatGeneration>>viewport>>renderer>>domain
+                    >>policy>>continuity>>nearBar>>optimization>>duration>>discontinuity>>repeat>>alignment;
+                Assert::IsTrue(bool(meta)&&tag=="identity_v1");
+                int index=-1;for(int i=0;i<4;++i)if(generation==generations[i]&&sequence==sequences[i])index=i;
+                Assert::IsTrue(index>=0);Assert::IsFalse(frames[index].found);
+                std::string submitted,acquisition,margin,evidenceGeneration,evidenceSequence,evidenceDomain;
+                int left,displayTop,right,displayBottom,acquired,onset;uint64_t eg,es,ed;
+                meta>>submitted>>left>>displayTop>>right>>displayBottom>>acquisition>>acquired>>margin>>onset
+                    >>evidenceGeneration>>eg>>evidenceSequence>>es>>evidenceDomain>>ed;
+                Assert::IsTrue(bool(meta)&&submitted=="submitted"&&acquisition=="acquisition"&&margin=="margin_onset"&&
+                    evidenceGeneration=="evidence_generation"&&evidenceSequence=="evidence_sequence"&&evidenceDomain=="evidence_domain");
+                Assert::AreEqual(3840,w);Assert::AreEqual(2160,h);Assert::AreEqual(size_t(7680),pitch);
+                Assert::AreEqual(pitch,uvPitch);Assert::AreEqual(int(AnalysisLumaFormat::P010),format);
+                Assert::AreEqual(int(ColorSpace::REC_709),colorspace);Assert::AreEqual(int(AnalysisLumaRange::Limited),range);
+                Assert::AreEqual(260,top);Assert::AreEqual(1898,bottom);
+                Assert::AreEqual(index==0 ? 262 : 238,displayTop);Assert::AreEqual(index==0 ? 1896 : 1920,displayBottom);
+                Assert::AreEqual((index==0||index==2)?1:0,acquired);Assert::AreEqual(index==0?0:1,onset);
+                if(onset) Assert::IsTrue(eg==generation&&es==sequence&&ed==domain);
+                const std::string bin=file.substr(0,file.size()-4)+".bin";
+                std::ifstream raw(bin,std::ios::binary|std::ios::ate);Assert::IsTrue(bool(raw));
+                Assert::IsTrue(raw.tellg()==std::streamoff(frames[index].pixels.bytes.size()));
+                raw.seekg(0);raw.read(reinterpret_cast<char*>(frames[index].pixels.bytes.data()),
+                    std::streamsize(frames[index].pixels.bytes.size()));Assert::IsTrue(bool(raw));
+                frames[index].generation=generation;frames[index].sequence=sequence;frames[index].source=number;
+                frames[index].timestamp=timestamp;frames[index].viewport=viewport;frames[index].domain=domain;frames[index].found=true;
+            }
+            for(const auto& f:frames)Assert::IsTrue(f.found);
+            Assert::IsTrue(frames[1].source>frames[0].source&&frames[1].timestamp>frames[0].timestamp);
+            Assert::IsTrue(frames[3].source>frames[2].source&&frames[3].timestamp>frames[2].timestamp);
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            const auto present=[&](const Source& f,const CropPresentationAdmissionState& previous,
+                RaisedMattePresentationHold* hold,bool refinement) {
+                auto source=f.pixels.P010Source();source.range=AnalysisLumaRange::Limited;
+                source.colorspace=ColorSpace::REC_709;source.generation=f.generation;
+                const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                auto input=RaisedBroadcastCropInput(native,evidence,f.sequence);
+                input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=f.generation;
+                input.framePresentationEpoch=f.viewport;input.barCropRefinementPending=refinement;
+                if(refinement)input.latestObservationSupportsCrop=false;
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),f.viewport,&evidence);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,f.generation,
+                    f.sequence,hold,f.timestamp/10000,2000,f.domain);
+                FinalAspectLimitFillInput fill;fill.crop=input;fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true;fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                return std::make_pair(selected,result.applied ? result.sourceBounds : selected.presentation.sourceBounds);
+            };
+            const auto fullWidth=[](const ActivePictureBounds& b) {
+                Assert::AreEqual(0,b.left);Assert::AreEqual(262,b.top);
+                Assert::AreEqual(3840,b.right);Assert::AreEqual(1896,b.bottom);
+            };
+            // Saved frames are sparse. We carry only policy state, not old movie
+            // pixels; the intervening frames and full renderer remain untested.
+            RaisedMattePresentationHold g1hold{},g2hold{};
+            const auto g1start=present(frames[0],{},&g1hold,false);
+            const auto g1renewal=present(frames[1],g1start.first.state,&g1hold,true);
+            const auto g2start=present(frames[2],{},&g2hold,false);
+            const auto g2renewal=present(frames[3],g2start.first.state,&g2hold,true);
+            Assert::IsTrue(g1start.first.presentation.applyCrop);fullWidth(g1start.second);
+            fullWidth(g1renewal.second);fullWidth(g2start.second);fullWidth(g2renewal.second);
+            // Model every missing current frame rather than replaying recorded
+            // movie pixels. Original G2 capture timestamps anchor 1601 and
+            // 1726; journal timestamps anchor 1832 and 1953. Synthetic marks
+            // exercise hold, expiry, renewed hold, and final expiry. This is a
+            // timer/policy sequence, not a reconstruction of unsaved video.
+            const auto timestampAt=[&](uint64_t sequence) {
+                const uint64_t x[]={1601,1726,1832,1953};
+                const uint64_t t[]={frames[2].timestamp,frames[3].timestamp,580269227,600455820};
+                int segment=0;while(segment<2 && sequence>x[segment+1])++segment;
+                return t[segment]+(t[segment+1]-t[segment])*(sequence-x[segment])/(x[segment+1]-x[segment]);
+            };
+            Assert::IsTrue(frames[2].timestamp<frames[3].timestamp && frames[3].timestamp<580269227);
+            Source synthetic;synthetic.pixels=MovingBroadcastEdge(0,true);
+            synthetic.generation=frames[2].generation;synthetic.viewport=frames[2].viewport;
+            synthetic.domain=frames[2].domain;synthetic.found=true;
+            RaisedMattePresentationHold timerHold{};
+            auto timer=present(frames[2],{},&timerHold,false);fullWidth(timer.second);
+            RaisedMattePresentationHold cleanHold{};
+            auto clean=present(frames[2],{},&cleanHold,false);fullWidth(clean.second);
+            uint64_t lastSource=frames[2].source,priorDetail=0;
+            for(uint64_t sequence=1602;sequence<=1953;++sequence) {
+                synthetic.sequence=sequence;synthetic.source=frames[2].source+(sequence-1601);
+                synthetic.timestamp=timestampAt(sequence);
+                Assert::IsTrue(synthetic.source>lastSource);lastSource=synthetic.source;
+                // New, moving synthetic picture for each modeled source. No
+                // old captured movie/background pixels supply current evidence.
+                synthetic.pixels.FillRectangle(600,800,700,900,int(300+sequence%100));
+                synthetic.pixels.FillRectangle(1800,1910,1810,1916,119,512,512);
+                const bool positive=sequence==1602 || sequence==1727 || sequence==1832;
+                const bool refinement=sequence>=1726 && sequence<=1729;
+                // A parallel clean sequence must retain full width on every
+                // distinct current source, including the five-frame window.
+                const auto cleanNext=sequence==1726
+                    ? present(frames[3],clean.first.state,&cleanHold,refinement)
+                    : present(synthetic,clean.first.state,&cleanHold,refinement);
+                fullWidth(cleanNext.second);Assert::IsTrue(cleanHold.generation==0);
+                clean=cleanNext;
+                if(positive) synthetic.pixels.FillRectangle(1800,1910,1810,1916,700,512,512);
+                const auto next=sequence==1726
+                    ? present(frames[3],timer.first.state,&timerHold,refinement)
+                    : present(synthetic,timer.first.state,&timerHold,refinement);
+                if(positive) {
+                    Assert::IsTrue(!next.first.presentation.applyCrop || next.second.bottom>=1916);
+                    Assert::IsTrue(timerHold.generation==synthetic.generation);
+                    if(sequence==1832)Assert::IsTrue(timerHold.lastDetailMs>priorDetail);
+                    priorDetail=timerHold.lastDetailMs;
+                }
+                if(sequence==1721 || sequence==1831 || sequence==1951)
+                    Assert::IsTrue(timerHold.generation==synthetic.generation);
+                if(!positive && (sequence<=1721 || (sequence>=1728 && sequence<=1951)))
+                    Assert::IsTrue(!next.first.presentation.applyCrop || next.second.bottom>=1916);
+                if((sequence>=1722 && sequence<=1726) || sequence>=1952) {
+                    Assert::IsTrue(timerHold.generation==0);fullWidth(next.second);
+                }
+                timer=next;
+            }
+            // Current visible glyphs must win over a stable prior crop in each
+            // generation, including while bar refinement is unresolved.
+            for(int index:{1,3}) {
+                const auto& previous=index==1 ? g1start.first.state : g2start.first.state;
+                for(int x:{1789,1804,2880,3000,3675}) {
+                    auto mark=frames[index];mark.pixels.FillRectangle(x,1896,x+4,1906,126,512,512);
+                    const auto shown=present(mark,previous,nullptr,true);
+                    Assert::IsTrue(!shown.first.presentation.applyCrop || shown.second.bottom>=1906);
+                    auto upper=frames[index];upper.pixels.FillRectangle(x,254,x+4,264,126,512,512);
+                    const auto top=present(upper,previous,nullptr,true);
+                    Assert::IsTrue(!top.first.presentation.applyCrop || top.second.top<=254);
+                }
+                auto glyph=frames[index];
+                glyph.pixels.FillRectangle(1789,1896,1793,1906,126,512,512);
+                glyph.pixels.FillRectangle(3000,1930,3010,1940,700,512,512);
+                const auto later=present(glyph,previous,nullptr,true);
+                Assert::IsTrue(!later.first.presentation.applyCrop || later.second.bottom>=1940);
+            }
+        }
+
         TEST_METHOD(OptionalRecordedB200AcquisitionTransitionsAndTitle)
         {
             using namespace AlphaSourceCrop;
