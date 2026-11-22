@@ -1213,6 +1213,83 @@ bool MatchesAdjacentRaisedShoulders(SampleContext& samples, bool top, int depth,
     return true;
 }
 
+// Presentation-only near-black exception: at most 24 ten-bit codes above
+// the paired matte inside the original eight-row edge footprint, and only
+// when current picture and neighbouring columns corroborate the shoulder.
+// This intentionally permits some indistinguishable faint edge pixels to be
+// cropped; it is not a proof of matte, absence, cleanup, or detected AR.
+bool MatchesScopeFramingShoulder(SampleContext& samples, bool top, int depth,
+    int x, int y, const AnalysisLumaSample& pixel, int matte) {
+    const int inward=top ? 1 : -1;
+    const int boundary=top ? depth : samples.source.height-depth-1;
+    const int distance=(boundary-y)*inward;
+    const int footprint=std::min(8,std::max(2,samples.source.height/270));
+    if (distance<1 || distance>footprint || pixel.luma<=matte+15 || pixel.luma>matte+24 ||
+        std::abs(int(pixel.chromaU)-512)>16 || std::abs(int(pixel.chromaV)-512)>16) return false;
+    const int reference=boundary+inward*std::max(1,samples.source.height/540);
+    AnalysisLumaSample picture;
+    if (!samples.Sample(x,reference,picture) || picture.luma<matte+24) return false;
+    const int spacing=std::max(2,samples.source.width/480);
+    int support=0;
+    for (int dx : {-2*spacing,-spacing,spacing,2*spacing}) {
+        const int nx=x+dx; AnalysisLumaSample neighbor,inside;
+        if (nx<0 || nx>=samples.source.width || !samples.Sample(nx,y,neighbor) ||
+            !samples.Sample(nx,reference,inside)) continue;
+        if (std::abs(int(neighbor.luma)-int(pixel.luma))<=4 && inside.luma>=matte+24 &&
+            std::abs(int(neighbor.chromaU)-512)<=16 && std::abs(int(neighbor.chromaV)-512)<=16)
+            ++support;
+    }
+    if (support<2) return false;
+    const int margin=std::min(32,std::max(2,samples.source.height/96));
+    for (int k=1;k<=margin;++k) {
+        const int row=y-inward*k; AnalysisLumaSample outside;
+        if (row<0 || row>=samples.source.height || !samples.Sample(x,row,outside) ||
+            outside.luma>pixel.luma+8 || std::abs(int(outside.chromaU)-512)>16 ||
+            std::abs(int(outside.chromaV)-512)>16) return false;
+        if (outside.luma<=matte+4) return true;
+    }
+    return false;
+}
+
+// Exact current planar rows, bounded by the existing two-megapixel shelf
+// admission and a separate cap on shoulder work. Work runs on the opt-in
+// optional worker. Outside the original edge margin the ordinary strict
+// matte threshold remains in force; no older source is consulted.
+bool InspectNearBlackScopeFramingBand(SampleContext& samples, bool top, int depth,
+    int matte, int& shoulderChecks) {
+    const auto& source=samples.source;
+    const int boundary=top ? depth : source.height-depth-1;
+    const int inward=top ? 1 : -1;
+    const int reference=boundary+inward*std::max(1,source.height/540);
+    const int edgeBand=std::max(2,source.height/96);
+    const int blend=std::max(2,source.height/270);
+    for (int row=0;row<depth;++row) {
+        if (samples.budget) samples.budget->Checkpoint();
+        const int y=top ? row : source.height-1-row;
+        const int distance=depth-row;
+        const int tolerance=distance<=edgeBand ? 15 : 4;
+        const int referenceRow=distance<=blend ? reference : -1;
+        const int taperBoundary=distance<=std::min(8,blend) ? boundary : -1;
+        int start=0;
+        while (start<source.width) {
+            int x=start;
+            if (!source.FindPlanarMatteRowDetail(y,referenceRow,std::min(5,distance),
+                matte,tolerance,x,start,taperBoundary)) return false;
+            samples.lumaSamples+=std::min(x+1,source.width)-start;
+            samples.chromaSamples+=std::min(x+1,source.width)-start;
+            if (x>=source.width) break;
+            if (++shoulderChecks>4096 || taperBoundary<0) return false;
+            AnalysisLumaSample pixel;
+            if (!samples.Sample(x,y,pixel) ||
+                (!MatchesAdjacentRaisedShoulders(samples,top,depth,x,y,pixel,matte) &&
+                 !FollowsRingingProfile(samples,top,depth,x,y,pixel,matte) &&
+                 !MatchesScopeFramingShoulder(samples,top,depth,x,y,pixel,matte))) return false;
+            start=x+1;
+        }
+    }
+    return true;
+}
+
 // Explain a weak extended codec shoulder only when the current pixel is
 // continuously connected to a high-contrast picture edge and neighboring
 // columns share the same neutral plateau. Detached marks retain their veto.
@@ -3806,6 +3883,24 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
                 int(result.excludedBottom.lumaP90),bottomExtent);
         }
     }
+    // This trial-only worker result is explicitly not a detector result. The
+    // caller separately enforces its known-ratio presentation policy.
+    if (allowCleanRaisedMatteExterior && pairedEdge && result.raisedMatteExteriorVerified &&
+        raw.available && raw.strongCurrentBarMeasurement &&
+        raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+        IsValidBoundsForSource(raw.trustedBounds,source) &&
+        raw.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        raw.trustedBounds.left==trustedPresentation.left && raw.trustedBounds.right==trustedPresentation.right &&
+        std::abs(raw.trustedBounds.top-trustedPresentation.top)<=2 &&
+        std::abs(raw.trustedBounds.bottom-trustedPresentation.bottom)<=2) {
+        int shoulderChecks=0;
+        result.nearBlackScopeFramingEligible=
+            InspectNearBlackScopeFramingBand(samples,true,trustedPresentation.top,
+                int(result.excludedTop.lumaP90),shoulderChecks) &&
+            InspectNearBlackScopeFramingBand(samples,false,source.height-trustedPresentation.bottom,
+                int(result.excludedBottom.lumaP90),shoulderChecks);
+    }
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
 	const auto rightExtent = FindVerticalVisibleExtent(samples, false,
@@ -3998,6 +4093,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	}
 	auto result = raw;
 	result.raisedMatteExteriorVerified = false;
+    result.nearBlackScopeFramingEligible = false;
 	result.relocatedOverlayExclusionEvaluated = false;
 	result.relocatedOverlayResidualsExcluded = false;
 	if (!raw.analysisValid || !raw.presentationValid || !source.IsValid() ||

@@ -1806,6 +1806,9 @@ namespace AlphaSourceCrop
     // Final selected source must include current unowned native matte pixels,
     // including after a prior crop or an UNKNOWN subtitle presentation hold.
     // Only controls presentation of extra verified matte around an already admitted crop.
+    bool PreferKnownAspectFraming(const ActivePictureBounds& base,
+        const ActivePicturePresentationRetentionEvidence& exactCurrent);
+
     struct RaisedMattePresentationHold {
         ActivePictureBounds picture;
         uint64_t generation = 0, epoch = 0, domain = 0;

@@ -329,6 +329,9 @@ struct ActivePicturePresentationRetentionEvidence
 	bool pairedRaisedEdgeContrast = false;
 	// Both raw exterior bands were verified pixel by pixel beyond the even edge margin.
 	bool raisedMatteExteriorVerified = false;
+    // Opt-in current-source presentation exception for a known native ratio.
+    // Faint edge pixels may be omitted: never absence, erasure or AR authority.
+    bool nearBlackScopeFramingEligible = false;
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;

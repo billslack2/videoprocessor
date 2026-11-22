@@ -16458,6 +16458,27 @@ struct LibplaceboVideoRenderer::Impl
                 scopePresentationHistory,scopePresentationCurrentBounds,effectiveGeometry,subtitleIdentity,
                 latestCropRetentionEvidence);
             const bool relocatedCaptionQualified=presentationView.qualified;
+            const bool knownAspectFraming=ExperimentalAspect::ActiveTrialEnabled() &&
+                !relocatedCaptionQualified && !currentMeasuredCaptionAvailable &&
+                effectiveGeometryAvailable && effectiveGeometrySourceGeneration==frameGeneration &&
+                effectiveClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                SameSubtitlePresentationBounds(latestActivePicturePresentationRetentionBounds,effectiveGeometry) &&
+                AlphaSourceCrop::PreferKnownAspectFraming(effectiveGeometry,latestCropRetentionEvidence);
+            if (knownAspectFraming) {
+                // Scope presentation may ignore this verified weak edge halo.
+                // Preserve the raw detector geometry and evidence for all other consumers.
+                presentationView.envelope={};
+                presentationView.currentBounds=effectiveGeometry;
+                auto& view=presentationView.retention;
+                view.visibleTop={};view.visibleBottom={};
+                view.outwardVisibleBoundsAvailable=false;view.outwardVisibleBounds={};
+                view.excludedVerticalBandsPixelSafe=true;
+                view.excludedBandsPixelSafe=view.excludedHorizontalBandsPixelSafe;
+                view.currentlyPixelSafe=view.excludedBandsPixelSafe;
+            }
             if(DebugLog::IsEnhancedLoggingEnabled() && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 subtitleSourcePreparation.ownershipAccepted.detected) {
                 const auto proofLogNow=GetTickCount64();
@@ -16531,7 +16552,7 @@ struct LibplaceboVideoRenderer::Impl
                     unknownCaptionHold.leaseAgeMs,submittedQualifiedCaption.proof.identity.acceptedSequence,captureClockFrequency,
                     unknownCaptionHold.bounds.left,unknownCaptionHold.bounds.top,unknownCaptionHold.bounds.right,unknownCaptionHold.bounds.bottom);
             }
-            const bool suppressCaptionPresentation=relocatedCaptionQualified || unknownCaptionHold.retained;
+            const bool suppressCaptionPresentation=relocatedCaptionQualified || unknownCaptionHold.retained || knownAspectFraming;
             if(unknownCaptionHold.retained) {
                 // Unknown removes an unqualified presentation proposal; it is
                 // NOT a positive pixel-safe measurement. Native evidence stays
@@ -16542,10 +16563,12 @@ struct LibplaceboVideoRenderer::Impl
             }
             const bool presentationRetentionEvaluated=!unknownCaptionHold.retained &&
                 latestActivePicturePresentationRetentionEvaluated;
+            presentationView.retention.nearBlackScopeFramingEligible=knownAspectFraming;
             const auto& presentationRetention=presentationView.retention;
             const auto& presentationEnvelopeHistory=presentationView.envelope;
             const auto& presentationCurrentBounds=presentationView.currentBounds;
-            const bool presentationRetentionSafe=relocatedCaptionQualified || (!unknownCaptionHold.retained && latestActivePicturePresentationRetentionSafe);
+            const bool presentationRetentionSafe=relocatedCaptionQualified || knownAspectFraming ||
+                (!unknownCaptionHold.retained && latestActivePicturePresentationRetentionSafe);
             const bool presentationOutwardVisible=suppressCaptionPresentation ?
                 presentationRetention.outwardVisibleBoundsAvailable : latestActivePictureOutwardVisibleBoundsAvailable;
 
@@ -18210,12 +18233,13 @@ releaseDriftBaseRetention =
                 scopeCurrentVerticalGeneration == frameGeneration && scopeCurrentVerticalSequence == sourceSequence &&
                 sameNative(scopeCurrentVerticalBase, cropInput.geometry);
             const auto& residual = presentationView.retention;
-            const auto recoveryBars = ArbitrateSubtitleRecoveryBars(presentationView, displayCaptionProof,
+            const auto recoveryBars = knownAspectFraming ? SubtitleRecoveryBarArbitration{} :
+                ArbitrateSubtitleRecoveryBars(presentationView, displayCaptionProof,
                 scopeCurrentVerticalMeasurement, denseCurrent,
                 presentationView.qualified && residual.visibleTop.available && residual.visibleTop.nativePixelDetail,
                 presentationView.qualified && residual.visibleBottom.available && residual.visibleBottom.nativePixelDetail,
                 cropInput.geometry, subtitleIdentity);
-            recoveryInput.barInspectionCompleted = recoveryBars.inspectionCompleted;
+            recoveryInput.barInspectionCompleted = knownAspectFraming || recoveryBars.inspectionCompleted;
             if (recoveryBars.upper || recoveryBars.lower) {
                 recoveryInput.currentBarContentAvailable = true;
                 recoveryInput.currentBarContentBase = cropInput.geometry;
@@ -18306,7 +18330,7 @@ releaseDriftBaseRetention =
                 journal.evidenceSequence = episodeInput.retentionSourceSequence;
             }
             bool classicOriginalPixels=false;
-            const bool classicProofEligible=subtitlePreviewMode==SubtitlePreviewMode::None && scopeSubtitleFit &&
+            const bool classicProofEligible=!knownAspectFraming && subtitlePreviewMode==SubtitlePreviewMode::None && scopeSubtitleFit &&
                 ExperimentalAspect::ActiveTrialEnabled() && !fixedCropAspectConfigured &&
                 !captionTranslationInput.movingPictureTransition && !nearBlackEpisodeFullRaster &&
                 !nearBlackEpisodeRetainCrop && SameSubtitlePresentationBounds(captionTranslationInput.geometry,cropInput.geometry) &&
@@ -18364,7 +18388,7 @@ releaseDriftBaseRetention =
                 }
             }
             const bool protectNativeMatteDetail = classicOriginalPixels || AlphaSourceCrop::ProtectCurrentNativeMatteDetail(
-                admissionDecision,cropInput,relocatedCaptionQualified ? presentationRetention : latestCropRetentionEvidence,
+                admissionDecision,cropInput,presentationRetention,
                 episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
                 &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
                 queuedAnalysisDomainKey);

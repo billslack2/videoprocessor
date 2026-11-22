@@ -2,6 +2,7 @@
 
 #include "AlphaSourceCropPolicy.h"
 #include "OriginalPixelExteriorEvidence.h"
+#include <ExperimentalAspectDetector.h>
 
 #include <cmath>
 
@@ -5814,6 +5815,21 @@ namespace AlphaSourceCrop
             !input.currentVisibleBoundsAvailable;
     }
 
+    bool PreferKnownAspectFraming(const ActivePictureBounds& base,
+        const ActivePicturePresentationRetentionEvidence& exactCurrent)
+    {
+        if (!exactCurrent.analysisValid || !exactCurrent.presentationValid ||
+            !exactCurrent.pairedRaisedEdgeContrast || !exactCurrent.nearBlackScopeFramingEligible ||
+            base.left!=0 || base.right!=base.rasterWidth || base.top<=0 ||
+            base.bottom>=base.rasterHeight || base.bottom<=base.top ||
+            base.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM)
+            return false;
+        const double measuredAspect=double(base.right-base.left)/(base.bottom-base.top);
+        // RatioSupport decays to zero at 1.5%. A third of that support
+        // therefore requires a match within 1%, using the detector's list.
+        return ExperimentalAspect::RatioSupport(measuredAspect)>=1.0/3.0-1e-12;
+    }
+
     static bool RaisedMatteMarginContainsCurrentDetail(const Input& input,
         const ActivePicturePresentationRetentionEvidence& evidence)
     {
@@ -5971,7 +5987,10 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
 			ValidBounds(input.currentVisibleBounds, input.rasterWidth, input.rasterHeight) &&
 			ContainedBounds(input.currentVisibleBounds, input.geometry);
-		if (!previouslyPresented && currentVisibleWitness &&
+        const bool preferMeasuredCrop=input.stabilizeRaisedMatteEnvelope && exactCurrentRetention &&
+            candidate.owner==DecisionOwner::TRUSTED_CROP && SameBounds(candidate.sourceBounds,input.geometry) &&
+            PreferKnownAspectFraming(input.geometry,*exactCurrentRetention);
+        if (!preferMeasuredCrop && !previouslyPresented && currentVisibleWitness &&
 			!ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds))
 		{
             // Picture acquisition already passed above. Only the original measured
@@ -5998,7 +6017,7 @@ namespace AlphaSourceCrop
 		}
         // Start a stable presentation envelope only with exact current-source
         // proof of both exteriors, after ordinary native acquisition authority.
-        if (input.stabilizeRaisedMatteEnvelope && !previouslyPresented && !result.blocked &&
+        if (input.stabilizeRaisedMatteEnvelope && !preferMeasuredCrop && !previouslyPresented && !result.blocked &&
             candidate.owner == DecisionOwner::TRUSTED_CROP && SameBounds(candidate.sourceBounds,input.geometry) &&
             input.geometry.left == 0 && input.geometry.right == input.rasterWidth &&
             input.geometry.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
@@ -6053,6 +6072,18 @@ namespace AlphaSourceCrop
             SameTrustedCropContract(retentionBase,base);
         const auto& top = retention.visibleTop;
         const auto& bottom = retention.visibleBottom;
+        if (input.stabilizeRaisedMatteEnvelope && current && nativePose &&
+            PreferKnownAspectFraming(base,retention)) {
+            if (hold) *hold={};
+            if (acquiredMargin) {
+                selected.presentation={};
+                selected.presentation.sourceBounds=base;
+                selected.presentation.applyCrop=true;
+                selected.presentation.owner=DecisionOwner::TRUSTED_CROP;
+            }
+            selected.presentation.reason="current known aspect and verified near-black edge";
+            return false;
+        }
         // Keep the acquired fixed envelope only when the current source proves
         // its entire excluded exterior; a previous frame is not crop proof.
         if (input.stabilizeRaisedMatteEnvelope && current && nativePose && retention.pairedRaisedEdgeContrast &&

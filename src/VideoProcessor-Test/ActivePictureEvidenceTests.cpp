@@ -2919,7 +2919,8 @@ namespace VideoProcessorTest
                 luma.range=static_cast<AnalysisLumaRange>(range);
                 const uint64_t generation=i<3?1:2, seq=i<3?1373+i:37970+i-3;
                 luma.generation=generation;
-                const auto evidence=EvaluateActivePicturePresentationRetention(luma,base,nullptr,true);
+                auto evidence=EvaluateActivePicturePresentationRetention(luma,base,nullptr,true);
+                evidence.nearBlackScopeFramingEligible=false; // Exercise the wider safety guard independently.
                 Assert::IsTrue(evidence.pairedRaisedEdgeContrast && evidence.raisedMatteExteriorVerified,
                     L"Each source must independently prove both guard exteriors.");
                 auto input=RaisedBroadcastCropInput(base,evidence,seq);
@@ -2958,6 +2959,7 @@ namespace VideoProcessorTest
             auto evidence=EvaluateActivePicturePresentationRetention(MovingBroadcastEdge(0,true).P010Source(),
                 base,nullptr,true);
             Assert::IsTrue(evidence.pairedRaisedEdgeContrast && evidence.raisedMatteExteriorVerified);
+            evidence.nearBlackScopeFramingEligible=false; // Replay the guarded route that flashed.
             auto initial=RaisedBroadcastCropInput(base,evidence,1109);
             initial.stabilizeRaisedMatteEnvelope=true;
             auto selected=AdmitCropPresentation({},initial,Evaluate(initial),5,&evidence);
@@ -2986,6 +2988,60 @@ namespace VideoProcessorTest
             ProtectCurrentNativeMatteDetail(outside,next,evidence,base,1,1110,&hold,1017,2000,42);
             Assert::IsFalse(outside.presentation.applyCrop,
                 L"A current native witness on the first excluded row still overrides the guard.");
+        }
+
+        TEST_METHOD(RecordedKnownScopeKeepsMeasuredFramingAcrossNearBlackEdges)
+        {
+            using namespace AlphaSourceCrop;
+            char* path=nullptr; size_t length=0;
+            _dupenv_s(&path,&length,"VP_FIDELITY_SCOPE_PLAYBACK_INCIDENT_DIR");
+            const std::string dir=path ? path : ""; std::free(path);
+            if (dir.empty()) {
+                Logger::WriteMessage(L"Set VP_FIDELITY_SCOPE_PLAYBACK_INCIDENT_DIR for the exact scope playback captures.");
+                return;
+            }
+            const char* names[]={
+                "matte-21432-134397986415923546-1888025272384-g1-s616-1.bin",
+                "matte-21432-134397986415923546-1888025272384-g1-s847-2.bin",
+                "matte-21432-134397986415923546-1888025272384-g1-s1111-3.bin"};
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            CropPresentationAdmissionState previous;
+            RaisedMattePresentationHold hold;
+            for (int index=0;index<3;++index) {
+                P010Frame frame(3840,2160);
+                std::ifstream raw(dir+"/"+names[index],std::ios::binary);
+                raw.read(reinterpret_cast<char*>(frame.bytes.data()),std::streamsize(frame.bytes.size()));
+                Assert::IsTrue(bool(raw));
+                auto source=frame.P010Source();
+                source.range=AnalysisLumaRange::Limited;source.encoding=VideoFrameEncoding(14);
+                source.colorspace=ColorSpace(4);source.generation=1;
+                ActivePictureFrameIdentity id{1,uint64_t(616+index),uint64_t(664+index),
+                    uint64_t(112365004+166830*index),6417685342305713284ull,2,1,17712632399396405480ull};
+                const auto current=ExperimentalAspect::MeasureActiveTrial(source,id);
+                const auto darkness=EvaluateActivePictureArDarkness(source,current);
+                auto evidence=EvaluateActivePicturePresentationRetention(
+                    source,base,current,darkness.global,darkness,nullptr,nullptr,true);
+                Assert::IsTrue(PreferKnownAspectFraming(base,evidence),L"The captured edge should retain native scope framing.");
+                Assert::IsFalse(PreferKnownAspectFraming(ScopePresentation(3840,2160,235,1925),evidence),
+                    L"Verified weak pixels must not grant the preference to an unrecognized measured aspect.");
+                auto input=RaisedBroadcastCropInput(base,evidence,616+index);
+                input.stabilizeRaisedMatteEnvelope=true;
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&evidence);
+                ProtectCurrentNativeMatteDetail(selected,input,evidence,base,1,616+index,&hold,1000+index*17,2000,42);
+                Assert::IsTrue(selected.presentation.applyCrop);
+                Assert::IsFalse(selected.presentation.raisedMatteMargin);
+                Assert::AreEqual(base.top,selected.presentation.sourceBounds.top);
+                Assert::AreEqual(base.bottom,selected.presentation.sourceBounds.bottom);
+                previous=selected.state;
+                frame.FillRectangle(1700,1907,1750,1913,160);
+                const auto strongNearEdgeMark=EvaluateActivePicturePresentationRetention(
+                    source,base,current,darkness.global,darkness,nullptr,nullptr,true);
+                Assert::IsFalse(PreferKnownAspectFraming(base,strongNearEdgeMark));
+                frame.FillRectangle(1700,1930,1750,1939,700);
+                const auto newCaptionLikeMark=EvaluateActivePicturePresentationRetention(
+                    source,base,current,darkness.global,darkness,nullptr,nullptr,true);
+                Assert::IsFalse(PreferKnownAspectFraming(base,newCaptionLikeMark));
+            }
         }
 
         TEST_METHOD(TrialRaisedGuardPreservesCrossingMarksOutsideEnvelope)
