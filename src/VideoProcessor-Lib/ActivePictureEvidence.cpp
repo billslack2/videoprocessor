@@ -1480,7 +1480,10 @@ void ProtectWeakDetachedMatteComponent(SampleContext& samples, bool top, int dep
         if (!hadExtent || (top ? coordinate<extent.coordinate : coordinate>extent.coordinate))
             extent.coordinate=coordinate;
     };
-    const int separated = std::max(3,source.height/270);
+    // The existing immediate-edge model owns the filter footprint. Only
+    // inspect components strictly beyond it so its outermost row is not
+    // independently reclassified as a detached weak mark.
+    const int separated = std::max(3,source.height/270)+1;
     for (int offset=margin;offset>=separated;--offset) {
         const int y=boundary-inward*offset;
         int start=0;
