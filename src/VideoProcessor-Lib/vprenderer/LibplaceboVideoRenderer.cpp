@@ -4753,6 +4753,7 @@ struct LibplaceboVideoRenderer::Impl
 
     struct TemporalPresentationSnapshot {
         MatteJournalSnapshot matteJournal{};
+        AlphaSourceCrop::SubmittedPixelProtectionCommitInput pixelProtection;
         bool matteProtectMargin=false;
         ActivePictureBounds matteProtectBase{};
         uint64_t matteEvidenceGeneration=0, matteEvidenceSequence=0, matteEvidenceDomain=0;
@@ -5180,6 +5181,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
     AlphaSourceCrop::RaisedMattePresentationHold raisedMattePresentationHold;
 	AlphaSourceCrop::SubmittedNativeScopeAnchor submittedNativeScopeAnchor;
+    AlphaSourceCrop::SubmittedPixelProtection submittedPixelProtection;
     uint64_t lastScopeAnchorDiagnosticTick = 0;
     std::string lastScopeAnchorCommitReason;
     uint64_t lastCleanScopeRejectLogTick = 0;
@@ -10273,6 +10275,7 @@ struct LibplaceboVideoRenderer::Impl
 		cropPresentationRecovery = {};
 		cropPresentationAdmission = {};
 		submittedNativeScopeAnchor = {};
+		submittedPixelProtection = {};
         lastRenderedCaptionAnchor = {};
         captionConfirmationHold = {};
 		cropAdmissionPreviouslyBlocked = false;
@@ -13354,6 +13357,7 @@ struct LibplaceboVideoRenderer::Impl
             nearBlackPresentationEpisode = {};
             cropPresentationAdmission = {};
             submittedNativeScopeAnchor = {};
+            submittedPixelProtection = {};
             sceneDetector.Reset(sceneDetectorGeneration);
             subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset();
             subtitlePendingGuard.Reset();
@@ -16025,6 +16029,7 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationPoseEligible=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
         MatteJournalSnapshot temporalPolicyJournal{};
+        AlphaSourceCrop::SubmittedPixelProtectionCommitInput preparedPixelProtection;
         bool temporalPolicyMatteMargin=false;
         ActivePictureBounds temporalPolicyMatteBase{};
         uint64_t temporalPolicyMatteGeneration=0, temporalPolicyMatteSequence=0, temporalPolicyMatteDomain=0;
@@ -16109,7 +16114,7 @@ struct LibplaceboVideoRenderer::Impl
              &temporalPolicyDrift, &temporalPolicyVerticalInput,
              &temporalPolicyRequestedTranslation, &temporalPolicyDriftDurationMs,
              &temporalPolicyRoutedTranslation, &temporalPolicyTranslationRequested,
-             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicyJournal, &temporalPolicyMatteMargin,
+             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicyJournal, &preparedPixelProtection, &temporalPolicyMatteMargin,
              &temporalPolicyMatteBase, &temporalPolicyMatteGeneration, &temporalPolicyMatteSequence, &temporalPolicyMatteDomain, &temporalPolicyMatteDecision,
              &temporalPolicySubmittedScopeContinuityRetention,
              &temporalPolicyOwnerUpdate, &temporalPolicyOwnerCandidate,
@@ -17537,6 +17542,11 @@ releaseDriftBaseRetention =
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
 			recoveryInput.submittedScopeAnchor = submittedNativeScopeAnchor;
+            recoveryInput.submittedPixelProtection = submittedPixelProtection;
+            recoveryInput.policyGeneration = localBoundaryPolicyGeneration;
+            recoveryInput.continuityGeneration = localBoundaryContinuityGeneration;
+            recoveryInput.analysisDomain = queuedAnalysisDomainKey;
+            recoveryInput.sourceFormat = subtitleIdentity.sourceFormatGeneration;
 			recoveryInput.crop = cropInput;
 			recoveryInput.cadenceRepeat = cadenceRepeat;
 			recoveryInput.measurementCurrent = episodeInput.measurementCurrent;
@@ -18024,6 +18034,7 @@ releaseDriftBaseRetention =
             if (subtitleBarAnalysisCompleted && scopeCurrentVerticalGeneration==frameGeneration &&
                 scopeCurrentVerticalSequence==sourceSequence &&
                 sameNative(scopeCurrentVerticalBase,cropInput.geometry)) {
+                recoveryInput.barInspectionCompleted = true;
                 const bool upper=scopeCurrentVerticalContent.upperContent &&
                     scopeCurrentVerticalBounds.top<cropInput.geometry.top;
                 const bool lower=scopeCurrentVerticalContent.lowerContent &&
@@ -18068,7 +18079,8 @@ releaseDriftBaseRetention =
             // commit rechecks the native base and actual submitted bounds.
             admissionDecision.presentation.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
             admissionDecision.state.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
-            if(unknownCaptionHold.retained && !uncertainPicture.currentBarContentProtected) {
+            if (unknownCaptionHold.retained && !uncertainPicture.currentBarContentProtected &&
+                !uncertainPicture.retainedPixelProtection) {
                 admissionDecision.state=cropPresentationAdmission;
                 admissionDecision.state.confirmedFitOwnership={};
                 admissionDecision.blocked=false;
@@ -18125,7 +18137,23 @@ releaseDriftBaseRetention =
                 episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
                 &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
                 queuedAnalysisDomainKey);
-            const bool preserveCurrentPixels = protectNativeMatteDetail || uncertainPicture.currentBarContentProtected;
+            const bool preserveCurrentPixels = protectNativeMatteDetail || uncertainPicture.currentBarContentProtected ||
+                uncertainPicture.retainedPixelProtection;
+            preparedPixelProtection.base = cropInput.geometry;
+            preparedPixelProtection.sourceGeneration = frameGeneration;
+            preparedPixelProtection.sourceSequence = sourceSequence;
+            preparedPixelProtection.presentationEpoch = viewportRequestSerial;
+            preparedPixelProtection.policyGeneration = recoveryInput.policyGeneration;
+            preparedPixelProtection.continuityGeneration = recoveryInput.continuityGeneration;
+            preparedPixelProtection.analysisDomain = recoveryInput.analysisDomain;
+            preparedPixelProtection.sourceFormat = recoveryInput.sourceFormat;
+            preparedPixelProtection.barInspectionCompleted = recoveryInput.barInspectionCompleted;
+            // Only fresh source evidence can originate a protected view. A held
+            // margin or previously submitted view supplies no new pixel proof.
+            preparedPixelProtection.pixelProtected =
+                (recoveryInput.currentBarContentAvailable && uncertainPicture.currentBarContentProtected) ||
+                (protectNativeMatteDetail && !admissionDecision.presentation.raisedMatteMargin &&
+                 !admissionDecision.presentation.applyCrop);
             if (matteJournalEnabled) {
                 auto& journal = temporalPolicyJournal;
                 journal.admitted = admissionDecision.presentation.sourceBounds;
@@ -19522,6 +19550,11 @@ releaseDriftBaseRetention =
             frameGeneration,sourceSequence,viewportRequestSerial,temporalOutputContract};
         TemporalPresentationSnapshot selectedPresentationForCommit{};
         bool selectedPresentationValid=false;
+        const auto pixelProtectionContextCurrent = [&](const AlphaSourceCrop::SubmittedPixelProtectionCommitInput& input) {
+            return input.sourceGeneration == frameGeneration && input.presentationEpoch == viewportRequestSerial &&
+                input.analysisDomain == queuedAnalysisDomainKey && input.sourceFormat == subtitleIdentity.sourceFormatGeneration &&
+                input.policyGeneration == localBoundaryPolicyGeneration && input.continuityGeneration == localBoundaryContinuityGeneration;
+        };
         auto applyPresentationSnapshot=[&](const TemporalPresentationSnapshot& snapshot) {
             renderImage=subtitleComposedImage;
             renderImage.crop=snapshot.sourceCrop;
@@ -19600,6 +19633,7 @@ releaseDriftBaseRetention =
                     sourceSnapshot.presentation=temporalPolicyPresentation;
                     if (matteJournalEnabled)
                         sourceSnapshot.matteJournal=temporalPolicyJournal;
+                    sourceSnapshot.pixelProtection = preparedPixelProtection;
                     sourceSnapshot.matteProtectMargin=temporalPolicyMatteMargin;
                     sourceSnapshot.matteProtectBase=temporalPolicyMatteBase;
                     sourceSnapshot.matteEvidenceGeneration=temporalPolicyMatteGeneration;
@@ -19786,6 +19820,47 @@ releaseDriftBaseRetention =
                     }
                     DebugLog::Log("Alpha selected native fill retired: generation=%llu source=%llu epoch=%llu reason=successful-presentation-superseded-prepared-fill",
                         selectedFill.sourceGeneration,selectedFill.sourceSequence,selectedFill.viewportEpoch);
+                }
+            }
+            // A queued packet can be prepared before an earlier source actually
+            // submits its protected view. Recheck at selection, before drawing.
+            auto& selectedView = selectedPresentationForCommit;
+            const auto& preparedCrop = selectedView.presentation.sourceCrop;
+            const ActivePictureBounds selectedBounds{preparedCrop.x0, preparedCrop.y0,
+                preparedCrop.x1, preparedCrop.y1, width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            ActivePictureBounds replacement;
+            if (selectedView.pixelProtection.sourceSequence == selected && pixelProtectionContextCurrent(selectedView.pixelProtection) &&
+                AlphaSourceCrop::RevalidateSelectedPixelProtection(submittedPixelProtection,
+                    selectedView.pixelProtection, selectedBounds, replacement)) {
+                selectedView.sourceCrop = {float(replacement.left), float(replacement.top),
+                    float(replacement.right), float(replacement.bottom)};
+                selectedView.presentation = {};
+                selectedView.presentation.valid = true;
+                selectedView.presentation.viewportEpoch = selectedView.viewportEpoch;
+                selectedView.presentation.owner = static_cast<int>(AlphaSourceCrop::DecisionOwner::OUTWARD_FIT);
+                selectedView.presentation.sourceCrop = {replacement.left, replacement.top,
+                    replacement.right, replacement.bottom};
+                selectedView.presentation.familyBase = selectedView.presentation.sourceCrop;
+                selectedView.translationPoseEligible = false;
+                selectedView.translationRequested = false;
+                selectedView.routedTranslation = 0;
+                selectedView.nlsHookActive = false;
+                selectedView.nlsGeometryAvailable = false;
+                selectedView.nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                selectedView.nlsDecision.reason = "selected source preserves submitted bar content";
+                selectedView.cropAdmission.confirmedFitOwnership = {};
+                selectedView.cropAdmission.optionalFillApplied = false;
+                selectedView.cropAdmission.optionalFillRetained = false;
+                selectedView.cropAdmission.samplingEnvelopeFillApplied = false;
+                selectedView.captionCandidate = {};
+                selectedView.captionHoldCandidate = {};
+                const auto fit = AnamorphicPresentation::FitPicture(
+                    pl_rect2df_aspect(&selectedView.sourceCrop), anamorphicScale,
+                    selectedView.screen, ResolveVerticalPictureAlignment(verticalAlignment));
+                if (fit.valid) {
+                    selectedView.targetCrop = {float(fit.picture.left), float(fit.picture.top),
+                        float(fit.picture.right), float(fit.picture.bottom)};
+                    selectedView.linearFallbackCrop = selectedView.targetCrop;
                 }
             }
             selectedPresentationValid=true;
@@ -20946,6 +21021,19 @@ releaseDriftBaseRetention =
                 (selectedPresentationValid ? selectedPresentationForCommit.startupPoseQualified :
                     temporalPolicyStartupPoseQualified);
             PublishStartupSubmission(startupSubmission,startupFrameRevision);
+            // Commit the final submitted rectangle for the selected source only.
+            // Mixed outputs cannot establish pixel evidence for either source.
+            auto protectionCommit = selectedPresentationValid ?
+                selectedPresentationForCommit.pixelProtection : preparedPixelProtection;
+            const uint64_t protectionSequence = temporalRenderer.Active() ?
+                temporalRenderer.SelectedPacketSequence() : sourceSequence;
+            protectionCommit.frameSubmitted = !temporalRenderer.Mixing() &&
+                (!temporalRenderer.Active() || selectedPresentationValid) &&
+                protectionCommit.sourceSequence == protectionSequence &&
+                pixelProtectionContextCurrent(protectionCommit);
+            protectionCommit.submittedBounds = scopeAnchorCommit.submittedBounds;
+            submittedPixelProtection = AlphaSourceCrop::CommitSubmittedPixelProtection(
+                submittedPixelProtection, protectionCommit);
             const auto priorScopeAnchor=submittedNativeScopeAnchor;
             const bool hadSubmittedScope = priorScopeAnchor.available;
             const char* scopeCommitReason="not-evaluated";
