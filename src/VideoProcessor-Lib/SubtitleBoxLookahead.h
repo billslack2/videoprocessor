@@ -7,6 +7,7 @@
 #include <SubtitleLocalGlyphProof.h>
 #include <SubtitleBarStripClearance.h>
 #include <algorithm>
+#include <functional>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -151,6 +152,8 @@ struct SubtitleBoxObservation
     // Geometry from the native AR owner, including its retained bounds. Never physical bar/crop proof.
     bool sharedNativeGeometry = false;
     bool sharedNativePhysicalSupport = false;
+    bool subtitleOnlyCurrentPairedSupport = false;
+    SubtitleBarEvidence legacyIndependentBars;
     // Current fingerprint revalidation of an existing bar-only cue, never a fresh scan.
     bool pendingBarGlyphsVerified = false, pendingBarGlyphsLocal = false;
     ActivePictureFrameIdentity glyphSupportIdentity;
@@ -611,7 +614,8 @@ namespace SubtitleBoxLookahead
         const ActivePictureFrameIdentity& identity, bool discontinuity,
         const SubtitleBarTrackingReference& priorBar = {},
         uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
-        const SubtitlePictureAuthority& sharedPicture = {})
+        const SubtitlePictureAuthority& sharedPicture = {},
+        const std::function<ActivePictureEvidence()>& pairedSource = {})
     {
         SubtitleBoxObservation result;
         const auto start = std::chrono::steady_clock::now();
@@ -673,10 +677,10 @@ namespace SubtitleBoxLookahead
                 result.barEvidence=ExtractSubtitleBarEvidence(source);
                 result.barAuthority=result.barEvidence.available;
                 const int nativeTolerance=(std::max)(1,source.height/180);
-                const bool currentPhysicalBars=result.barAuthority && result.barEvidence.top>0 &&
+                auto physicalBarsMatch=[&]() {return result.barAuthority && result.barEvidence.top>0 &&
                     result.barEvidence.bottom<source.height &&
                     std::abs(result.barEvidence.top-result.pictureTop)<=nativeTolerance &&
-                    std::abs(result.barEvidence.bottom-result.pictureBottom)<=nativeTolerance;
+                    std::abs(result.barEvidence.bottom-result.pictureBottom)<=nativeTolerance;};
                 scanner.Reset();
                 result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
                     identity.acceptedSequence,identity.viewportGeneration);
@@ -687,6 +691,19 @@ namespace SubtitleBoxLookahead
                 result.sharedProbeAnchor=result.text.anchor;
                 result.sharedProbeReason=result.text.diagnosticReason;
                 if(result.text.detected && !result.text.held && !result.text.workLimit) {
+                    if(!physicalBarsMatch() && pairedSource) {
+                        const auto currentPair=pairedSource();
+                        const auto raised=HasCurrentSubtitlePairedMatte(source,&currentPair)?
+                            ExtractSubtitleBarEvidence(source,&currentPair):SubtitleBarEvidence{};
+                        if(raised.available && raised.top>0 && raised.bottom<source.height &&
+                            std::abs(raised.top-result.pictureTop)<=nativeTolerance &&
+                            std::abs(raised.bottom-result.pictureBottom)<=nativeTolerance) {
+                            result.legacyIndependentBars=result.barEvidence;
+                            result.subtitleOnlyCurrentPairedSupport=true;
+                            result.barEvidence=raised;result.barAuthority=true;
+                        }
+                    }
+                    const bool currentPhysicalBars=physicalBarsMatch();
                     const auto proof=currentPhysicalBars ? SubtitleLocalGlyphProof{} :
                         ProveCurrentSubtitleGlyphBacking(source,result.text,result.ink.get());
                     result.glyphLocalProofReason=currentPhysicalBars ? "current-physical-source-support" : proof.reason;

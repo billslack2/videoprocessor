@@ -9342,7 +9342,8 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
         bool backlogRetirementOnly = false, bool allowSubmit = true,
-        const AnalysisLumaSource* publishedSource = nullptr)
+        const AnalysisLumaSource* publishedSource = nullptr,
+        const ActivePictureFrameIdentity* nativeEvidenceIdentity = nullptr)
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
@@ -9424,11 +9425,14 @@ struct LibplaceboVideoRenderer::Impl
             key.text.diagnosticReason = "input-cadence-not-analyzed";
             return key;
         }
-        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
+        const bool evidenceIdentityAvailable=nativeEvidenceIdentity &&
+            SameAnalysisFrameIdentity(*nativeEvidenceIdentity,key.identity);
+        const auto evidenceIdentity=evidenceIdentityAvailable?*nativeEvidenceIdentity:ActivePictureFrameIdentity{};
+        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence,evidenceIdentityAvailable,evidenceIdentity](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
             return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence,
-                ExperimentalAspect::ActiveTrialEnabled());
+                ExperimentalAspect::ActiveTrialEnabled(),evidenceIdentityAvailable?&evidenceIdentity:nullptr);
         });
         return key;
     }
@@ -25342,7 +25346,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     queued.frame,state,queued.analysis.get(),"lookahead",analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
-                    sharedPicture,prepared,evidence);
+                    sharedPicture,prepared,measured->evidence,false,true,nullptr,&measured->identity);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);

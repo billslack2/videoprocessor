@@ -1,6 +1,7 @@
 #pragma once
 #include <AnalysisLumaSource.h>
 #include <SubtitleBoxDetector.h>
+#include <ActivePictureEvidence.h>
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -36,12 +37,25 @@ struct SubtitleBarEvidence
     const char* reason = "invalid-source";
 };
 
-inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& source)
+inline bool HasCurrentSubtitlePairedMatte(const AnalysisLumaSource& source,
+    const ActivePictureEvidence* currentPair)
+{
+    return currentPair && currentPair->available && currentPair->strongCurrentBarMeasurement &&
+        currentPair->classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+        currentPair->top.trusted && currentPair->bottom.trusted &&
+        currentPair->axisEvidence.measuredMatteBounds.rasterWidth==source.width &&
+        currentPair->axisEvidence.measuredMatteBounds.rasterHeight==source.height &&
+        (int(currentPair->axisEvidence.measuredMatteBounds.trustedBarAxes) & int(ActivePictureBounds::BarAxes::TOP_BOTTOM));
+}
+
+inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& source,
+    const ActivePictureEvidence* currentPair=nullptr)
 {
     SubtitleBarEvidence result;
     if (!source.IsValid() || source.width < 64 || source.height < 48 ||
         source.width > 8192 || source.height > 4320) return result;
     result.bottom=source.height;
+    const bool paired=HasCurrentSubtitlePairedMatte(source,currentPair);
     enum { Columns = 128 };
     const int step = (std::max)(1,source.height/540);
     const int limit = source.height/3;
@@ -66,7 +80,8 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             levels[n++]=value.luma;neutralSamples+=neutral(value);
         }
         std::nth_element(levels.begin(),levels.begin()+n/2,levels.end());floor=levels[n/2];
-        if(floor>96 || neutralSamples*100<n*95)return false;
+        const double measured=paired?(bottom?currentPair->bottom.lumaFloor:currentPair->top.lumaFloor):0;
+        if((floor>96 && (!paired || std::abs(double(floor)-measured)>12)) || neutralSamples*100<n*95)return false;
         auto black=[&](const AnalysisLumaSample& value) {
             return std::abs(int(value.luma)-floor)<=12 && neutral(value);
         };
@@ -247,7 +262,7 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
         // Keep ordinary asymmetric/single-edge behavior exactly as before.
         if(distributedTop && distributedBottom &&
             std::abs(fallback.topDepth-fallback.bottomDepth)<=tolerance &&
-            fallback.topFloor<=80 && fallback.bottomFloor<=80 &&
+            ((fallback.topFloor<=80 && fallback.bottomFloor<=80) || paired) &&
             std::abs(fallback.topFloor-fallback.bottomFloor)<=12) {
             fallback.topDistributedBoundary=!top;
             fallback.bottomDistributedBoundary=!bottom;
@@ -255,6 +270,14 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             fallback.topRecoveredAtShallowerEdge=result.topRecoveredAtShallowerEdge;
             fallback.bottomRecoveredAtShallowerEdge=result.bottomRecoveredAtShallowerEdge;
             result=fallback;top=bottom=true;
+        }
+    }
+    if(paired && (result.topFloor>96 || result.bottomFloor>96)) {
+        const auto& measured=currentPair->axisEvidence.measuredMatteBounds;
+        if(!top || !bottom || std::abs(result.topDepth-measured.top)>tolerance ||
+            std::abs(source.height-result.bottomDepth-measured.bottom)>tolerance ||
+            std::abs(result.topFloor-result.bottomFloor)>12) {
+            result={};result.bottom=source.height;result.reason="raised-pair-not-current";return result;
         }
     }
     if(top)result.top=result.topDepth;

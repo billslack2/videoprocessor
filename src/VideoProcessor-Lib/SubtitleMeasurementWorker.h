@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include "vprenderer/ExperimentalAspectActive.h"
 #include <SubtitleContinuitySampling.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
@@ -62,7 +63,8 @@ public:
     SubtitleBoxDetector::Diagnostics TakeDetectorDiagnostics() {return m_scanner.TakeDiagnostics();}
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
-        const ActivePictureEvidence& nativeEvidence = {}, bool preparePublishedCaption = false) {
+        const ActivePictureEvidence& nativeEvidence = {}, bool preparePublishedCaption = false,
+        const ActivePictureFrameIdentity* nativeEvidenceIdentity = nullptr) {
         const auto started=std::chrono::steady_clock::now();
         if(m_analysisDomainKey!=key.identity.analysisDomainKey) {
             m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
@@ -70,8 +72,16 @@ public:
         m_scanner.SetOptimizationMode(key.optimizationMode);
         m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
+        auto currentPair=[&]() -> ActivePictureEvidence {
+            if(nativeEvidenceIdentity && SameAnalysisFrameIdentity(*nativeEvidenceIdentity,key.identity))return nativeEvidence;
+            if(!preparePublishedCaption)return {};
+            if(m_haveCurrentPair && SameAnalysisFrameIdentity(m_currentPairIdentity,key.identity))return m_currentPair;
+            m_currentPair=ExperimentalAspect::MeasureActiveTrial(source,key.identity);
+            m_currentPairIdentity=key.identity;m_haveCurrentPair=true;
+            return m_currentPair;
+        };
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
-            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture,currentPair);
         result.analysisStride=key.analysisStride;
         // Presentation consumes the AR owner's planes. Keep the existing
         // independent subtitle-assisted AR measurement separate: it may report
@@ -79,7 +89,7 @@ public:
         auto physical=result;
         bool regroupedOnPhysicalPlanes = false;
         if(result.sharedNativeGeometry) {
-            const auto& bars=result.barEvidence;
+            const auto& bars=result.subtitleOnlyCurrentPairedSupport?result.legacyIndependentBars:result.barEvidence;
             physical.barEvidence=bars;physical.barAuthority=bars.available;
             physical.independentBarAnalysis=bars.available && bars.top>0 && bars.bottom<source.height;
             physical.pictureTop=bars.top;physical.pictureBottom=bars.bottom;
@@ -301,6 +311,9 @@ private:
     SubtitleBoxDetector m_scanner;
     std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
+    bool m_haveCurrentPair=false;
+    ActivePictureFrameIdentity m_currentPairIdentity{};
+    ActivePictureEvidence m_currentPair;
     bool m_capturedDiagnostic=false;
 };
 
