@@ -16292,9 +16292,15 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleSourcePreparation.ownershipEvidence=EvaluateQualifiedSubtitlePresentationEvidence(
                     analysisSource,latestCropRetentionEvidence,ownershipInput);
                 subtitleSourcePreparation.preparedErasureEvidence={};
-                if(!subtitleSourcePreparation.ownershipEvidence.qualified)
+                const auto& ownership=subtitleSourcePreparation.ownershipEvidence;
+                if(ownership.residualConflict) {
+                    // Both paths evaluate the same exact-source pixels outside move.content.
+                    // Carry the veto through without repeating the excluded-band scan.
+                    subtitleSourcePreparation.preparedErasureEvidence=ownership;
+                } else if(!ownership.qualified) {
                     subtitleSourcePreparation.preparedErasureEvidence=EvaluatePreparedSubtitlePresentationEvidence(
                         analysisSource,latestCropRetentionEvidence,ownershipInput);
+                }
                 subtitleSourcePreparation.ownershipMilliseconds=std::chrono::duration<double,std::milli>(
                     SteadyClock::now()-ownershipStarted).count();
                 subtitleSourcePreparation.ownershipBase=effectiveGeometry;
@@ -17443,6 +17449,7 @@ releaseDriftBaseRetention =
                 !leftBarContentActive && !rightBarContentActive &&
                 !detectorLeftExpansion && !detectorRightExpansion;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
+            cropInput.stabilizeRaisedMatteEnvelope = ExperimentalAspect::ActiveTrialEnabled();
             if (relocatedCaptionQualified)
                 cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
                     displayCaptionProof,subtitleIdentity,cropInput.geometry);

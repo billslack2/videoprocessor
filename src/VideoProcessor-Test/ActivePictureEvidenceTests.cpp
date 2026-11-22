@@ -2793,6 +2793,62 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(RecordedRaisedMatteGuardTemporalSequence)
+        {
+            using namespace AlphaSourceCrop;
+            char* path=nullptr; size_t length=0;
+            _dupenv_s(&path,&length,"VP_MATTE_INCIDENT_DIR");
+            const std::string dir=path ? path : ""; std::free(path);
+            if (dir.empty()) {
+                Logger::WriteMessage(L"Set VP_MATTE_INCIDENT_DIR to replay private incident captures.");
+                return;
+            }
+            const char* names[]={
+                "matte-28840-134397888180449267-2270965133376-g1-s1373-1.bin",
+                "matte-28840-134397888180449267-2270965133376-g1-s1604-2.bin",
+                "matte-28840-134397888180449267-2270965133376-g1-s1373-1.bin",
+                "matte-28840-134397888563394787-2270965112896-g2-s37970-1.bin",
+                "matte-28840-134397888563394787-2270965112896-g2-s38201-2.bin"};
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            CropPresentationAdmissionState previous;
+            RaisedMattePresentationHold hold{};
+            for (int i=0;i<5;++i) {
+                if (i==3) { previous={}; hold={}; }
+                P010Frame frame(3840,2160);
+                std::ifstream raw(dir+"/"+names[i],std::ios::binary);
+                raw.read(reinterpret_cast<char*>(frame.bytes.data()),std::streamsize(frame.bytes.size()));
+                Assert::IsTrue(bool(raw));
+                auto luma=frame.P010Source();
+                const uint64_t generation=i<3?1:2, seq=i<3?1373+i:37970+i-3;
+                luma.generation=generation;
+                const auto evidence=EvaluateActivePicturePresentationRetention(luma,base);
+                Assert::IsTrue(evidence.pairedRaisedEdgeContrast && evidence.raisedMatteExteriorVerified,
+                    L"Each source must independently prove both guard exteriors.");
+                auto input=RaisedBroadcastCropInput(base,evidence,seq);
+                input.stabilizeRaisedMatteEnvelope=true;
+                input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=generation;
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&evidence);
+                Assert::IsTrue(ProtectCurrentNativeMatteDetail(selected,input,evidence,base,generation,seq,&hold,1000+i*17,2000,42));
+                Assert::IsTrue(selected.presentation.applyCrop && selected.presentation.raisedMatteMargin);
+                Assert::AreEqual(238,selected.presentation.sourceBounds.top);
+                Assert::AreEqual(1920,selected.presentation.sourceBounds.bottom);
+                Assert::AreEqual(260,selected.state.trustedCrop.top);
+                Assert::AreEqual(1898,selected.state.trustedCrop.bottom);
+                previous=selected.state;
+                if (i==0) {
+                    auto unknown=AdmitCropPresentation(previous,input,Evaluate(input),5,nullptr);
+                    Assert::IsTrue(ProtectCurrentNativeMatteDetail(unknown,input,evidence,base,generation,seq-1,&hold,1001,2000,42));
+                    Assert::IsFalse(unknown.presentation.applyCrop,L"Stale proof must submit uncropped current pixels.");
+                }
+            }
+            P010Frame title(3840,2160);
+            std::ifstream raw(dir+"/matte-28840-134397888180449267-2270965133376-g1-s2154-3.bin",std::ios::binary);
+            raw.read(reinterpret_cast<char*>(title.bytes.data()),std::streamsize(title.bytes.size()));
+            Assert::IsTrue(bool(raw));
+            const auto titleEvidence=EvaluateActivePicturePresentationRetention(title.P010Source(),base);
+            Assert::IsFalse(titleEvidence.raisedMatteExteriorVerified,L"The recorded title/UI must not certify a crop that excludes it.");
+        }
+
         TEST_METHOD(FirstRaisedAdScopeRequiresCurrentTrustedAuthorityAndVerifiedExterior)
         {
             using namespace AlphaSourceCrop;

@@ -254,6 +254,8 @@ struct QualifiedSubtitlePresentationEvidence
     QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown;
     bool qualified = false;
     bool renewsHold=false;
+    // A completed scan found current content beyond the shared erasure bounds.
+    bool residualConflict=false;
     // Current compositor output only; never native ownership or a renewable lease.
     bool preparedErasureOnly=false;
     size_t ownershipSamples = 0;
@@ -603,8 +605,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         double(bw)/(box.bottom-box.top),ActivePictureBounds::BarAxes::NONE};
     const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(source,base,raw,erased,0);
     if(!projected.relocatedOverlayExclusionEvaluated)return reject("outside-proof-unavailable");
-    if(!projected.excludedBandsPixelSafe)
+    if(!projected.excludedBandsPixelSafe) {
+        result.residualConflict=true;
         return reject("unowned-picture-outside-erasure",QualifiedSubtitlePresentationStatus::Conflict);
+    }
     result.retention=projected;result.erasedSourceBounds=erased;
     // Native picture classification remains raw. Exact owned erasure plus clear
     // remaining bands proves only that this physical presentation can be kept.

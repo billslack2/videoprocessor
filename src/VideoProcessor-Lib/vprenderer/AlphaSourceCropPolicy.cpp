@@ -5804,6 +5804,20 @@ namespace AlphaSourceCrop
             !input.currentVisibleBoundsAvailable;
     }
 
+    static bool RaisedMatteMarginContainsCurrentDetail(const Input& input,
+        const ActivePicturePresentationRetentionEvidence& evidence)
+    {
+        const int margin = (std::max(2,input.rasterHeight / 96) + 1) & ~1;
+        const int top = std::max(0,input.geometry.top-margin);
+        const int bottom = std::min(input.rasterHeight,input.geometry.bottom+margin);
+        const auto& t=evidence.visibleTop;
+        const auto& b=evidence.visibleBottom;
+        return (!t.available || t.coordinate >= top) && (!b.available || b.coordinate <= bottom) &&
+            (!t.nativePixelDetail || (t.nativePixelY >= top && t.nativePixelY < bottom)) &&
+            (!b.nativePixelDetail || (b.nativePixelY >= top && b.nativePixelY < bottom)) &&
+            !evidence.visibleLeft.available && !evidence.visibleRight.available;
+    }
+
     static Decision RaisedMatteMargin(const Input& input, const char* reason)
     {
         const int margin = (std::max(2,input.rasterHeight / 96) + 1) & ~1;
@@ -5904,6 +5918,17 @@ namespace AlphaSourceCrop
                 return result;
             }
 		}
+        // Start a stable presentation envelope only with exact current-source
+        // proof of both exteriors, after ordinary native acquisition authority.
+        if (input.stabilizeRaisedMatteEnvelope && !previouslyPresented && !result.blocked &&
+            candidate.owner == DecisionOwner::TRUSTED_CROP && SameBounds(candidate.sourceBounds,input.geometry) &&
+            input.geometry.left == 0 && input.geometry.right == input.rasterWidth &&
+            input.geometry.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            input.geometry.top > 0 && input.geometry.bottom < input.rasterHeight &&
+            exactCurrentRetention && exactCurrentRetention->analysisValid && exactCurrentRetention->presentationValid &&
+            exactCurrentRetention->pairedRaisedEdgeContrast && exactCurrentRetention->raisedMatteExteriorVerified &&
+            RaisedMatteMarginContainsCurrentDetail(input,*exactCurrentRetention))
+            result.presentation = RaisedMatteMargin(input,"acquired scope with verified raised matte margin");
 		result.state.available = true;
 		result.state.trustedCrop = input.geometry;
 		result.state.authorityOrigin = input.authorityOrigin;
@@ -5938,11 +5963,11 @@ namespace AlphaSourceCrop
             (acquiredMargin || (!selected.presentation.outwardExpanded && SameBounds(crop,base))) &&
             ValidBounds(base,input.rasterWidth,input.rasterHeight) && base.left == 0 &&
             base.right == input.rasterWidth && base.top > 0 && base.bottom < input.rasterHeight;
-        if (hold && hold->generation && (!nativePose || !holdMs ||
+        if (hold && hold->generation && (!nativePose || (!holdMs && !hold->fixedGuard) ||
             hold->generation != input.frameSourceGeneration || hold->epoch != input.framePresentationEpoch ||
             hold->domain != domain || input.frameSourceSequence < hold->lastSequence ||
             !SameTrustedCropContract(hold->picture,base) || nowMs < hold->lastDetailMs ||
-            nowMs - hold->lastDetailMs >= holdMs)) *hold = {};
+            (!hold->fixedGuard && nowMs - hold->lastDetailMs >= holdMs))) *hold = {};
 
         const bool current = input.automaticCropEnabled && retention.analysisValid && retention.presentationValid &&
             input.frameSourceGeneration && input.frameSourceSequence &&
@@ -5950,6 +5975,27 @@ namespace AlphaSourceCrop
             SameTrustedCropContract(retentionBase,base);
         const auto& top = retention.visibleTop;
         const auto& bottom = retention.visibleBottom;
+        // Keep the acquired fixed envelope only when the current source proves
+        // its entire excluded exterior; a previous frame is not crop proof.
+        if (input.stabilizeRaisedMatteEnvelope && current && nativePose && retention.pairedRaisedEdgeContrast &&
+            retention.raisedMatteExteriorVerified && RaisedMatteMarginContainsCurrentDetail(input,retention)) {
+            if (hold) {
+                hold->picture=base; hold->generation=input.frameSourceGeneration;
+                hold->epoch=input.framePresentationEpoch; hold->domain=domain;
+                hold->lastDetailMs=nowMs; hold->lastSequence=input.frameSourceSequence;
+                hold->fixedGuard=true;
+            }
+            selected.presentation=RaisedMatteMargin(input,"current detail inside verified raised matte margin");
+            return true;
+        }
+        // An established fixed envelope has no permission to exclude unknown
+        // current pixels. Submit this source uncropped if its proof is absent.
+        if (input.stabilizeRaisedMatteEnvelope && hold && hold->fixedGuard && nativePose && !current) {
+            selected.presentation={}; selected.blocked=true;
+            selected.presentation.sourceBounds=FullRaster(input.rasterWidth,input.rasterHeight);
+            selected.presentation.reason="current matte exterior proof unavailable";
+            return true;
+        }
         const bool protectTop = current && top.available && top.nativePixelDetail;
         const bool protectBottom = current && bottom.available && bottom.nativePixelDetail;
         const bool clipped = (protectTop || protectBottom) && selected.presentation.applyCrop &&
@@ -5959,6 +6005,15 @@ namespace AlphaSourceCrop
         // This is the same even-aligned strip inspected outside-in by the native verifier.
         // Keep the entire strip, including all ambiguous pixels. Its edges are fixed for the crop.
         const int margin = (std::max(2,input.rasterHeight / 96) + 1) & ~1;
+        if (input.stabilizeRaisedMatteEnvelope && hold && hold->fixedGuard && current &&
+            (!retention.pairedRaisedEdgeContrast || !retention.raisedMatteExteriorVerified ||
+             !RaisedMatteMarginContainsCurrentDetail(input,retention))) {
+            *hold={};
+            selected.presentation={}; selected.blocked=true;
+            selected.presentation.sourceBounds=FullRaster(input.rasterWidth,input.rasterHeight);
+            selected.presentation.reason="current matte exterior contains unresolved pixels";
+            return true;
+        }
         const bool bounded = clipped && hold && nativePose && retention.pairedRaisedEdgeContrast &&
             retention.raisedMatteExteriorVerified &&
             (!protectTop || top.nativePixelY >= base.top - margin) &&

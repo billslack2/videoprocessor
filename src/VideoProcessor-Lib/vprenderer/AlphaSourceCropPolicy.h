@@ -1299,6 +1299,8 @@ namespace AlphaSourceCrop
         // Does not grant authority, acquire a crop, or clear existing recovery.
         bool movingPictureTransition = false;
 		bool automaticCropEnabled = false;
+        // Presentation-only experiment, never detector or crop authority.
+        bool stabilizeRaisedMatteEnvelope = false;
 		bool nearBlackEpisodeRetainCrop = false;
 		bool nearBlackEpisodeFullRaster = false;
 		// A last-submitted native Scope may retain presentation through a current
@@ -1789,6 +1791,7 @@ namespace AlphaSourceCrop
         ActivePictureBounds picture;
         uint64_t generation = 0, epoch = 0, domain = 0;
         uint64_t lastSequence = 0, lastDetailMs = 0;
+        bool fixedGuard = false;
     };
 
     bool ProtectCurrentNativeMatteDetail(CropPresentationAdmissionDecision& selected,

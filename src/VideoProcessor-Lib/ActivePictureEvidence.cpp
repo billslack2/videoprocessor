@@ -3782,7 +3782,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         source.height-trustedPresentation.bottom,int(result.excludedBottom.lumaP90)) : none;
     const bool inspectDetail = suppressedShelf || detachedTop.second>=0 || detachedBottom.second>=0 || strongWitness(topExtent,int(result.excludedTop.lumaP90)) ||
         strongWitness(bottomExtent,int(result.excludedBottom.lumaP90));
-    if (verifyShelf && (inspectDetail || (pairedEdge && (topExtent.available || bottomExtent.available)))) {
+    if (verifyShelf && (inspectDetail || pairedEdge)) {
         // A weak sparse cue can request the wider, pixel-preserving margin.
         // Certify only what that presentation removes. Reclassifying its
         // kept inner rows could invent an opposite-side cue and alter the
