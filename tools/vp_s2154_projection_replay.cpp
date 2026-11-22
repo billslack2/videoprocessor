@@ -225,7 +225,14 @@ int main(int argc, char **argv) {
         fill.configured.cropWiderContentToFillScreen = fill.configured.widerLimitConfigured = true;
         fill.configured.widerAspectLimit = 2.42;
         auto final = EvaluateFinalAspectLimitFill(fill);
-        scopeReady = !admitted.blocked && geom.content.bottom > 2049;
+        const auto selected =
+            final.applied ? final.sourceBounds : admitted.presentation.sourceBounds;
+        scopeReady =
+            !admitted.blocked && admitted.presentation.applyCrop && geom.content.bottom > 2049 &&
+            selected.left == 0 && selected.right == 3840 && selected.top > 0 &&
+            selected.bottom < 2160 && selected.left <= geom.destination.left &&
+            selected.top <= geom.destination.top && selected.right >= geom.destination.right &&
+            selected.bottom >= geom.destination.bottom;
         std::cout << "modeled final eligible admitted=" << !admitted.blocked
                   << " fill=" << final.applied << " ";
         bounds("source", final.applied ? final.sourceBounds : admitted.presentation.sourceBounds);
