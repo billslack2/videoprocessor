@@ -5821,7 +5821,7 @@ namespace AlphaSourceCrop
         const bool eligible=upperBarOnly ? exactCurrent.nearBlackUpperScopeFramingEligible :
             exactCurrent.nearBlackScopeFramingEligible;
         if (!exactCurrent.analysisValid || !exactCurrent.presentationValid ||
-            !exactCurrent.pairedRaisedEdgeContrast || !eligible ||
+            (!upperBarOnly && !exactCurrent.pairedRaisedEdgeContrast) || !eligible ||
             base.left!=0 || base.right!=base.rasterWidth || base.top<=0 ||
             base.bottom>=base.rasterHeight || base.bottom<=base.top ||
             base.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM)

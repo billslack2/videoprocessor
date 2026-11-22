@@ -3845,6 +3845,16 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         HasDistributedRaisedEdge(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90)) &&
         HasDistributedRaisedEdge(samples,false,source.height-trustedPresentation.bottom,int(result.excludedBottom.lumaP90));
     result.pairedRaisedEdgeContrast = pairedEdge;
+    // A real lower footer can disqualify the shared two-band shelf. Verify
+    // the current upper raised edge independently for Classic translation;
+    // it never supplies a lower-band or whole-scope certificate.
+    const bool topShelfEligible = allowCleanRaisedMatteExterior && planar && source.IsValid() &&
+        source.width<=4096 && trustedPresentation.top>0 &&
+        trustedPresentation.top <= (2*1024*1024)/source.width &&
+        raisedBand(result.excludedTop) && raw.top.trusted &&
+        std::isfinite(raw.top.lumaP90) &&
+        std::abs(raw.top.lumaP90-result.excludedTop.lumaP90)<=4 &&
+        HasDistributedRaisedEdge(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90));
     bool suppressedShelf = false;
     auto topExtent = FindHorizontalVisibleExtent(samples, true,
         trustedPresentation.top, blackThreshold, relativeBands ? int(result.excludedTop.lumaP90) : -1,
@@ -3891,7 +3901,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     // caller separately enforces its known-ratio presentation policy. Check
     // each band independently: a real footer must not invalidate proof that
     // the upper band is clear for an existing Classic lower-only shift.
-    if (allowCleanRaisedMatteExterior && pairedEdge &&
+    if (allowCleanRaisedMatteExterior && (pairedEdge || topShelfEligible) &&
         raw.available && raw.strongCurrentBarMeasurement &&
         raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
         raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
@@ -3917,12 +3927,13 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         const int topMatte=int(result.excludedTop.lumaP90);
         const int bottomMatte=int(result.excludedBottom.lumaP90);
         int shoulderChecks=0;
-        const bool topSafe=InspectNearBlackScopeFramingBand(samples,true,topDepth,topMatte,shoulderChecks) &&
+        const bool topSafe=topShelfEligible &&
+            InspectNearBlackScopeFramingBand(samples,true,topDepth,topMatte,shoulderChecks) &&
             independentShapesAbsent(true,topDepth,topMatte);
         result.nearBlackUpperScopeFramingEligible=topSafe;
         // The whole-scope exception still requires the existing independent
         // exterior certificate on both bars as well as both new band checks.
-        if (topSafe && result.raisedMatteExteriorVerified)
+        if (topSafe && pairedEdge && result.raisedMatteExteriorVerified)
             result.nearBlackScopeFramingEligible=
                 InspectNearBlackScopeFramingBand(samples,false,bottomDepth,bottomMatte,shoulderChecks) &&
                 independentShapesAbsent(false,bottomDepth,bottomMatte);
