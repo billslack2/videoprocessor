@@ -3,7 +3,6 @@
 
 #include <AnalysisDiagnosticTrace.h>
 #include <vprenderer/MatteIncidentCapture.h>
-#include <filesystem>
 
 #include <atomic>
 #include <chrono>
@@ -217,10 +216,10 @@ namespace Tests
 
         TEST_METHOD(MatteIncidentsPreserveSubmittedIdentityAndActualBytes)
         {
-            namespace fs = std::filesystem;
             using Result = MatteIncidentCapture::Result;
-            const fs::path directory = fs::temp_directory_path() /
-                (L"vp-matte-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+            const std::string directory = TempDirectory() + "\\vp-matte-test-" +
+                std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
+            const std::wstring wideDirectory(directory.begin(), directory.end());
             const auto first = std::make_shared<std::vector<uint8_t>>(64, 0x31);
             const auto second = std::make_shared<std::vector<uint8_t>>(64, 0x72);
             MatteIncidentCapture::Job job;
@@ -232,11 +231,10 @@ namespace Tests
                 Assert::IsFalse(disabled.Enabled());
                 Assert::AreEqual(static_cast<unsigned>(Result::None),
                     static_cast<unsigned>(disabled.Observe(job, true, true, false)));
-                Assert::IsFalse(fs::exists(directory));
+                Assert::IsTrue(GetFileAttributesA(directory.c_str()) == INVALID_FILE_ATTRIBUTES);
             }
             {
-                MatteIncidentCapture capture(directory.wstring());
-                for (int i = 0; i < 400 && !capture.Enabled(); ++i) Sleep(5);
+                MatteIncidentCapture capture(wideDirectory);
                 Assert::IsTrue(capture.Enabled());
                 Assert::AreEqual(static_cast<unsigned>(Result::IdentityMismatch),
                     static_cast<unsigned>(capture.Observe(job, false, true, true)));
@@ -275,64 +273,70 @@ namespace Tests
             }
             unsigned frames = 0, sidecars = 0;
             bool checkedFirst = false, checkedSecond = false, checkedDecision = false;
-            for (const auto& entry : fs::directory_iterator(directory))
+            WIN32_FIND_DATAA entry = {};
+            HANDLE search = FindFirstFileA((directory + "\\*").c_str(), &entry);
+            Assert::IsTrue(search != INVALID_HANDLE_VALUE);
+            do
             {
-                const auto name = entry.path().filename().wstring();
-                if (entry.path().extension() == L".bin")
+                const std::string name(entry.cFileName);
+                if (name.size() < 4) continue;
+                const std::string extension = name.substr(name.size() - 4);
+                if (extension == ".bin")
                 {
-                    std::ifstream input(entry.path(), std::ios::binary);
+                    std::ifstream input(directory + "\\" + name, std::ios::binary);
                     const std::vector<uint8_t> data((std::istreambuf_iterator<char>(input)), {});
-                    if (name.find(L"-s12-") != std::wstring::npos) checkedFirst = data == *first;
-                    if (name.find(L"-s15-") != std::wstring::npos) checkedSecond = data == *second;
+                    if (name.find("-s12-") != std::string::npos) checkedFirst = data == *first;
+                    if (name.find("-s15-") != std::string::npos) checkedSecond = data == *second;
                     ++frames;
                 }
-                if (entry.path().extension() == L".txt")
+                if (extension == ".txt")
                 {
-                    std::ifstream input(entry.path());
+                    std::ifstream input(directory + "\\" + name);
                     const std::string text((std::istreambuf_iterator<char>(input)), {});
-                    if (name.find(L"-s15-") != std::wstring::npos)
+                    if (name.find("-s15-") != std::string::npos)
                         checkedDecision = text.find("evidence_sequence 15") != std::string::npos &&
                             text.find("current detail inside verified raised matte margin") != std::string::npos &&
                             text.find("submitted 0 238 3840 1920") != std::string::npos;
                     ++sidecars;
                 }
-            }
+            } while (FindNextFileA(search, &entry));
+            FindClose(search);
             Assert::AreEqual(2u, frames);
             Assert::AreEqual(2u, sidecars);
             Assert::IsTrue(checkedFirst && checkedSecond && checkedDecision);
-            fs::remove_all(directory);
+            RemoveTree(directory);
         }
 
         TEST_METHOD(MatteIncidentsCanArmAfterStartupAndCaptureFirstMargin)
         {
-            namespace fs = std::filesystem;
             using Result = MatteIncidentCapture::Result;
-            const fs::path directory = fs::temp_directory_path() /
-                (L"vp-matte-arm-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
-            fs::create_directories(directory);
-            { std::ofstream disarm(directory / L"DISARM"); disarm << "paused"; }
+            const std::string directory = TempDirectory() + "\\vp-matte-arm-" +
+                std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
+            const std::wstring wideDirectory(directory.begin(), directory.end());
+            Assert::IsTrue(CreateDirectoryA(directory.c_str(), nullptr) != 0);
+            { std::ofstream disarm(directory + "\\DISARM"); disarm << "paused"; }
             const auto bytes = std::make_shared<std::vector<uint8_t>>(32, 0x42);
             MatteIncidentCapture::Job job;
             job.owner = bytes; job.frame.data = bytes->data(); job.frame.dataBytes = bytes->size();
             job.frame.transportGeneration = 2; job.frame.acceptedSequence = 15;
             {
-                MatteIncidentCapture capture(directory.wstring());
-                Sleep(300);
+                MatteIncidentCapture capture(wideDirectory);
                 Assert::IsFalse(capture.Enabled());
                 Assert::AreEqual(static_cast<unsigned>(Result::None),
                     static_cast<unsigned>(capture.Observe(job, true, false, false)));
-                fs::remove(directory / L"DISARM");
+                Assert::IsTrue(DeleteFileA((directory + "\\DISARM").c_str()) != 0);
                 for (int i = 0; i < 400 && !capture.Enabled(); ++i) Sleep(5);
                 Assert::IsTrue(capture.Enabled());
                 Assert::AreEqual(static_cast<unsigned>(Result::Queued),
                     static_cast<unsigned>(capture.Observe(job, true, true, true)));
                 Assert::IsTrue(capture.PeakOutstanding() <= 2);
             }
-            unsigned frames = 0;
-            for (const auto& entry : fs::directory_iterator(directory))
-                if (entry.path().extension() == L".bin") ++frames;
-            Assert::AreEqual(1u, frames);
-            fs::remove_all(directory);
+            WIN32_FIND_DATAA entry = {};
+            HANDLE search = FindFirstFileA((directory + "\\*.bin").c_str(), &entry);
+            Assert::IsTrue(search != INVALID_HANDLE_VALUE);
+            Assert::IsFalse(FindNextFileA(search, &entry) != 0);
+            FindClose(search);
+            RemoveTree(directory);
         }
 
 		TEST_METHOD(CaptureIncludesTenSecondStyleRollingHistoryAndPostTriggerRecords)

@@ -6,7 +6,6 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -38,16 +37,15 @@ public:
     {
         try
         {
-            if (directory.empty() || !std::filesystem::path(directory).is_absolute())
+            if (!IsAbsolutePath(directory))
                 return;
             m_directory = directory;
             FILETIME now{};
             GetSystemTimeAsFileTime(&now);
             m_session = (static_cast<uint64_t>(now.dwHighDateTime) << 32) | now.dwLowDateTime;
-            std::error_code error;
-            const bool disarmed = std::filesystem::exists(
-                std::filesystem::path(m_directory) / L"DISARM", error);
-            m_armed.store(!disarmed && !error, std::memory_order_release);
+            bool disarmed = false;
+            const bool armStateKnown = ReadDisarmState(disarmed);
+            m_armed.store(armStateKnown && !disarmed, std::memory_order_release);
             m_worker = std::thread(&MatteIncidentCapture::Run, this);
         }
         catch (...)
@@ -208,18 +206,70 @@ private:
             DeleteFileW(path.c_str()); // Only this worker's CREATE_NEW file.
         return ok;
     }
+    static bool IsAbsolutePath(const std::wstring& path) noexcept
+    {
+        const bool drive = path.size() >= 3 && path[1] == L':' &&
+            (path[2] == L'\\' || path[2] == L'/');
+        const bool unc = path.size() >= 5 && path[0] == L'\\' && path[1] == L'\\';
+        return drive || unc;
+    }
+    static bool EnsureDirectory(const std::wstring& path) noexcept
+    {
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES)
+            return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        if (CreateDirectoryW(path.c_str(), nullptr))
+            return true;
+        if (GetLastError() != ERROR_ALREADY_EXISTS)
+            return false;
+        const DWORD existing = GetFileAttributesW(path.c_str());
+        return existing != INVALID_FILE_ATTRIBUTES && (existing & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    }
+    static bool EnsureDirectoryTree(const std::wstring& path)
+    {
+        if (!IsAbsolutePath(path))
+            return false;
+        size_t rootEnd = 3;
+        if (path[0] == L'\\' && path[1] == L'\\')
+        {
+            const size_t serverEnd = path.find_first_of(L"\\/", 2);
+            if (serverEnd == std::wstring::npos)
+                return false;
+            const size_t shareEnd = path.find_first_of(L"\\/", serverEnd + 1);
+            if (shareEnd == std::wstring::npos)
+                return EnsureDirectory(path);
+            rootEnd = shareEnd + 1;
+        }
+        for (size_t i = rootEnd; i < path.size(); ++i)
+        {
+            if ((path[i] == L'\\' || path[i] == L'/') && !EnsureDirectory(path.substr(0, i)))
+                return false;
+        }
+        return EnsureDirectory(path);
+    }
+    bool ReadDisarmState(bool& disarmed) const
+    {
+        const std::wstring path = m_directory + L"\\DISARM";
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES)
+        {
+            disarmed = true;
+            return true;
+        }
+        const DWORD error = GetLastError();
+        disarmed = false;
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+    }
     bool WriteJob(const Job& job)
     {
-        std::error_code error;
-        std::filesystem::create_directories(m_directory, error);
-        if (error)
+        if (!EnsureDirectoryTree(m_directory))
             return false;
         const auto& f = job.frame;
         const auto stem = std::wstring(L"matte-") + std::to_wstring(GetCurrentProcessId()) + L"-" +
             std::to_wstring(m_session) + L"-" + std::to_wstring(reinterpret_cast<uintptr_t>(this)) +
             L"-g" + std::to_wstring(f.transportGeneration) + L"-s" +
             std::to_wstring(f.acceptedSequence) + L"-" + std::to_wstring(++m_written);
-        const auto root = std::filesystem::path(m_directory) / stem;
+        const auto root = m_directory + L"\\" + stem;
         struct RemoveUnpublished
         {
             std::wstring path;
@@ -227,7 +277,7 @@ private:
             bool published = false;
             ~RemoveUnpublished() { if (owns && !published) DeleteFileW(path.c_str()); }
         };
-        RemoveUnpublished binaryGuard{root.wstring() + L".bin"};
+        RemoveUnpublished binaryGuard{root + L".bin"};
         if (!WriteNewFile(binaryGuard.path, f.data, static_cast<DWORD>(f.dataBytes)))
             return false;
         binaryGuard.owns = true;
@@ -247,8 +297,8 @@ private:
             << " evidence_sequence " << job.evidenceSequence << " evidence_domain " << job.evidenceDomain
             << " decision=\"" << DecisionName(job.decision) << "\" dropped " << Dropped() << '\n';
         const auto contents = meta.str();
-        const auto pending = root.wstring() + L".pending";
-        const auto sidecar = root.wstring() + L".txt";
+        const auto pending = root + L".pending";
+        const auto sidecar = root + L".txt";
         RemoveUnpublished pendingGuard{pending};
         if (!WriteNewFile(pendingGuard.path, contents.data(), static_cast<DWORD>(contents.size())))
             return false;
@@ -274,12 +324,11 @@ private:
                         [this] { return m_stop || m_count; });
                     {
                         lock.unlock();
-                        std::error_code error;
-                        const bool disarmed = std::filesystem::exists(
-                            std::filesystem::path(m_directory) / L"DISARM", error);
+                        bool disarmed = false;
+                        const bool armStateKnown = ReadDisarmState(disarmed);
                         lock.lock();
-                        const bool wasArmed = m_armed.exchange(!disarmed && !error, std::memory_order_acq_rel);
-                        if (!disarmed && !error && !wasArmed)
+                        const bool wasArmed = m_armed.exchange(armStateKnown && !disarmed, std::memory_order_acq_rel);
+                        if (armStateKnown && !disarmed && !wasArmed)
                         {
                             m_scopeCount = 0;
                             m_marginCount = 0;
