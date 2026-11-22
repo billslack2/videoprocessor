@@ -23,6 +23,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -1798,6 +1799,157 @@ namespace VideoProcessorTest
             ProtectCurrentNativeMatteDetail(change,in,e,expanded,1,2006);
             Assert::AreEqual(248,change.presentation.sourceBounds.top);
             Assert::AreEqual(1910,change.presentation.sourceBounds.bottom);
+        }
+
+        TEST_METHOD(OptionalExactSubmittedMatteIncidentsPreserveScopeAndText)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t length=0;
+            _dupenv_s(&value,&length,"VP_MATTE_INCIDENT_REPLAY_DIR");
+            const std::string dir=value ? value : ""; std::free(value);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_MATTE_INCIDENT_REPLAY_DIR to replay the exact submitted incidents.");
+                return;
+            }
+            struct Incident {
+                P010Frame frame{3840,2160}; uint64_t sequence=0,timestamp=0,transport=0,domain=0;
+                int acquisition=0; bool found=false;
+            };
+            Incident incidents[2];
+            for(const auto& item:std::filesystem::directory_iterator(dir)) {
+                if(item.path().extension()!=L".txt") continue;
+                std::ifstream meta(item.path());
+                int width,height,format,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,chromaPitch; std::string tag;
+                uint64_t transport,sequence,frameNumber,timestamp,sourceFormat,viewport,renderer,domain,policy,continuity;
+                int nearBar,optimization,duration,discontinuity,repeat,alignment;
+                meta>>width>>height>>pitch>>chromaPitch>>format>>encoding>>colorspace>>top>>bottom>>hint>>range
+                    >>tag>>transport>>sequence>>frameNumber>>timestamp>>sourceFormat>>viewport>>renderer>>domain
+                    >>policy>>continuity>>nearBar>>optimization>>duration>>discontinuity>>repeat>>alignment;
+                Assert::IsTrue(bool(meta) && tag=="identity_v1");
+                std::string submitted,acquisition,margin,evidenceGeneration,evidenceSequence,evidenceDomain;
+                int left,displayTop,right,displayBottom,acquired,onset; uint64_t eg,es,ed;
+                meta>>submitted>>left>>displayTop>>right>>displayBottom>>acquisition>>acquired>>margin>>onset
+                    >>evidenceGeneration>>eg>>evidenceSequence>>es>>evidenceDomain>>ed;
+                Assert::IsTrue(bool(meta) && submitted=="submitted" && acquisition=="acquisition" &&
+                    margin=="margin_onset" && evidenceGeneration=="evidence_generation" &&
+                    evidenceSequence=="evidence_sequence" && evidenceDomain=="evidence_domain");
+                Assert::IsTrue(acquired==0 || acquired==1); const int index=acquired ? 0 : 1;
+                Assert::IsFalse(incidents[index].found);
+                Assert::AreEqual(3840,width); Assert::AreEqual(2160,height);
+                Assert::AreEqual(size_t(7680),pitch); Assert::AreEqual(pitch,chromaPitch);
+                Assert::AreEqual(int(AnalysisLumaFormat::P010),format);
+                Assert::AreEqual(int(ColorSpace::REC_709),colorspace);
+                Assert::AreEqual(int(AnalysisLumaRange::Limited),range);
+                Assert::AreEqual(260,top); Assert::AreEqual(1898,bottom);
+                Assert::AreEqual(0,left); Assert::AreEqual(238,displayTop);
+                Assert::AreEqual(3840,right); Assert::AreEqual(1920,displayBottom);
+                Assert::IsTrue(onset==1 && transport==eg && sequence==es && domain==ed);
+                Assert::AreEqual(acquired ? uint64_t(624) : uint64_t(1134),sequence);
+                auto rawPath=item.path(); rawPath.replace_extension(L".bin");
+                std::ifstream raw(rawPath,std::ios::binary|std::ios::ate);
+                Assert::IsTrue(bool(raw));
+                Assert::IsTrue(raw.tellg()==std::streamoff(incidents[index].frame.bytes.size()));
+                raw.seekg(0); raw.read(reinterpret_cast<char*>(incidents[index].frame.bytes.data()),
+                    std::streamsize(incidents[index].frame.bytes.size()));
+                Assert::IsTrue(bool(raw));
+                incidents[index].sequence=sequence; incidents[index].timestamp=timestamp;
+                incidents[index].transport=transport; incidents[index].domain=domain;
+                incidents[index].acquisition=acquired; incidents[index].found=true;
+            }
+            Assert::IsTrue(incidents[0].found && incidents[1].found);
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            const auto present=[&](const P010Frame& frame,const Incident& identity,
+                const CropPresentationAdmissionState& previous,RaisedMattePresentationHold* hold,
+                AnalysisLumaFormat format=AnalysisLumaFormat::P010) {
+                auto source=frame.usesFullHeightChroma ? frame.P210Source() : frame.P010Source();
+                source.format=format; source.range=AnalysisLumaRange::Limited;
+                source.colorspace=ColorSpace::REC_709; source.generation=identity.transport;
+                const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                auto input=RaisedBroadcastCropInput(native,evidence,identity.sequence);
+                input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=identity.transport;
+                input.framePresentationEpoch=3;
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),3,&evidence);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,identity.transport,
+                    identity.sequence,hold,identity.timestamp/10000,2000,identity.domain);
+                FinalAspectLimitFillInput fill;
+                fill.crop=input; fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                return std::make_pair(selected,result.applied ? result.sourceBounds : selected.presentation.sourceBounds);
+            };
+            const auto expected=[](const ActivePictureBounds& b) {
+                Assert::AreEqual(0,b.left); Assert::AreEqual(262,b.top);
+                Assert::AreEqual(3840,b.right); Assert::AreEqual(1896,b.bottom);
+            };
+            // S624 is the actual acquisition input; S1134 is the actual
+            // renewal input. The clean preceding warm state is modeled because
+            // this capture contains no source frame from immediately before it.
+            const auto cold=present(incidents[0].frame,incidents[0],{},nullptr);
+            auto seedIdentity=incidents[1]; seedIdentity.sequence=1133; seedIdentity.timestamp-=166830;
+            RaisedMattePresentationHold hold{};
+            P010Frame clearSeed(3840,2160); clearSeed.BlackOutside(0,260,3840,1898,64);
+            const auto seed=present(clearSeed,seedIdentity,{},&hold);
+            const auto warm=present(incidents[1].frame,incidents[1],seed.first.state,&hold);
+            Assert::IsTrue(cold.first.presentation.applyCrop); expected(cold.second);
+            Assert::IsTrue(seed.first.presentation.applyCrop); expected(seed.second);
+            Assert::IsTrue(warm.first.presentation.applyCrop); expected(warm.second);
+            // Duplicate each recorded chroma row into both rows of a 4:2:2
+            // frame. All canonical 10-bit samples match the original source;
+            // the synthetic layouts do not claim to be captured P210/DV input.
+            for(const auto& incident:incidents) {
+                P010Frame converted(3840,2160,0,true);
+                const size_t lumaBytes=incident.frame.pitch*2160;
+                std::copy_n(incident.frame.bytes.data(),lumaBytes,converted.bytes.data());
+                for(int row=0;row<2160;++row)
+                    std::copy_n(incident.frame.bytes.data()+lumaBytes+size_t(row/2)*incident.frame.pitch,
+                        incident.frame.pitch,converted.bytes.data()+lumaBytes+size_t(row)*converted.pitch);
+                for(auto format:{AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
+                    const auto cold422=present(converted,incident,{},nullptr,format);
+                    Assert::IsTrue(cold422.first.presentation.applyCrop); expected(cold422.second);
+                }
+            }
+            for(const auto& incident:incidents) {
+                auto dot=incident.frame; dot.FillRectangle(1800,1930,1810,1940,700);
+                Assert::IsTrue(present(dot,incident,{},nullptr).second.bottom>=1940);
+                auto faint=incident.frame; faint.FillRectangle(1800,1930,1806,1936,126,507,508);
+                Assert::IsTrue(present(faint,incident,{},nullptr).second.bottom>=1936);
+                auto underline=incident.frame; underline.FillRectangle(1800,1894,1848,1914,126,507,508);
+                Assert::IsTrue(present(underline,incident,{},nullptr).second.bottom>=1914);
+                auto colored=incident.frame; colored.FillRectangle(1800,1930,1810,1940,119,700,512);
+                Assert::IsTrue(present(colored,incident,{},nullptr).second.bottom>=1940);
+                // Preserve small real detail at the measured lobe as well as
+                // elsewhere in the matte; none may certify its own removal.
+                auto lobeDot=incident.frame; lobeDot.FillRectangle(2880,1908,2886,1914,129,512,512);
+                Assert::IsTrue(present(lobeDot,incident,{},nullptr).second.bottom>=1914);
+                auto brightLobe=incident.frame;
+                brightLobe.FillRectangle(2882,1902,2884,1904,167,512,512);
+                Assert::IsTrue(present(brightLobe,incident,{},nullptr).second.bottom>=1904);
+                auto nearDot=incident.frame; nearDot.FillRectangle(1800,1904,1802,1906,143,512,512);
+                Assert::IsTrue(present(nearDot,incident,{},nullptr).second.bottom>=1906);
+                auto lobeUnderline=incident.frame;
+                lobeUnderline.FillRectangle(2874,1896,2890,1912,129,512,512);
+                Assert::IsTrue(present(lobeUnderline,incident,{},nullptr).second.bottom>=1912);
+                auto legal=incident.frame;
+                for(int x=1390;x<2250;x+=35) legal.FillRectangle(x,2045,x+15,2064,129);
+                Assert::IsTrue(present(legal,incident,{},nullptr).second.bottom>=2064);
+            }
+            // A genuine wider vertical picture changes the measured geometry;
+            // the prior submitted scope is not authority to discard new rows.
+            const auto expanded=ScopePresentation(3840,2160,248,1910);
+            P010Frame realChange(3840,2160); realChange.BlackOutside(0,248,3840,1910,119);
+            auto expandedSource=realChange.P010Source(); expandedSource.range=AnalysisLumaRange::Limited;
+            const auto expandedEvidence=EvaluateActivePicturePresentationRetention(expandedSource,expanded);
+            auto expandedInput=RaisedBroadcastCropInput(expanded,expandedEvidence,1135);
+            expandedInput.framePresentationEpoch=3;
+            auto changed=AdmitCropPresentation(seed.first.state,expandedInput,Evaluate(expandedInput),3,&expandedEvidence);
+            ProtectCurrentNativeMatteDetail(changed,expandedInput,expandedEvidence,expanded,1,1135);
+            Assert::AreEqual(248,changed.presentation.sourceBounds.top);
+            Assert::AreEqual(1910,changed.presentation.sourceBounds.bottom);
         }
 
         TEST_METHOD(OptionalRecordedRaisedMatteKeepsScopeAtSourceCadence)
