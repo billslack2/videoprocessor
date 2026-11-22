@@ -3577,7 +3577,8 @@ bool ActivePicturePresentationRetentionEvidence::IsWeakBoundedFringe(
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation,
-    const AnalysisEvaluationBudget* budget)
+    const AnalysisEvaluationBudget* budget,
+    bool allowCleanRaisedMatteExterior)
 {
     CheckAnalysisEvaluationBudget(budget);
     const auto raw = ExtractActivePictureEvidence(source,budget);
@@ -3590,7 +3591,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         arDarkness = EvaluateActivePictureArDarkness(source,raw,global,budget);
     }
     return EvaluateActivePicturePresentationRetention(
-        source,trustedPresentation,raw,global,arDarkness,budget);
+        source,trustedPresentation,raw,global,arDarkness,budget,nullptr,allowCleanRaisedMatteExterior);
 }
 
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
@@ -3599,7 +3600,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     const ActivePictureGlobalNearBlackEvidence& global,
     const ActivePictureArDarknessEvidence& arDarkness,
     const AnalysisEvaluationBudget* budget,
-    const AnalysisEvaluationBudget* relativeBudget)
+    const AnalysisEvaluationBudget* relativeBudget,
+    bool allowCleanRaisedMatteExterior)
 {
     CheckAnalysisEvaluationBudget(budget);
 	ActivePicturePresentationRetentionEvidence result;
@@ -3782,7 +3784,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         source.height-trustedPresentation.bottom,int(result.excludedBottom.lumaP90)) : none;
     const bool inspectDetail = suppressedShelf || detachedTop.second>=0 || detachedBottom.second>=0 || strongWitness(topExtent,int(result.excludedTop.lumaP90)) ||
         strongWitness(bottomExtent,int(result.excludedBottom.lumaP90));
-    if (verifyShelf && (inspectDetail || pairedEdge)) {
+    if (verifyShelf && (inspectDetail || (pairedEdge &&
+        (allowCleanRaisedMatteExterior || topExtent.available || bottomExtent.available)))) {
         // A weak sparse cue can request the wider, pixel-preserving margin.
         // Certify only what that presentation removes. Reclassifying its
         // kept inner rows could invent an opposite-side cue and alter the

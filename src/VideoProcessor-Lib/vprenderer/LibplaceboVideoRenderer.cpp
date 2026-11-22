@@ -24583,7 +24583,8 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
         identity.analysisDomainKey=frame.domainKey;
         const auto raw=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
         if (!CurrentLookaheadMeasurement(frame,identity,raw)) continue;
-        const auto request=[&](const PreparedPictureEvidenceKey& key) {
+        const auto request=[&](PreparedPictureEvidenceKey key) {
+            key.verifyCleanRaisedMatte = key.kind == PictureKind::Retention && ExperimentalAspect::ActiveTrialEnabled();
             if (queued.analysis->pictureProof.Lookup(key)) return;
             const auto slot=queued.analysis->pictureProof.Request(key);
             if (!slot || slot->pending.load(std::memory_order_acquire)) return;

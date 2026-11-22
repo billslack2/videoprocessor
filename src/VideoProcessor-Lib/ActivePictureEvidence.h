@@ -482,7 +482,8 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation,
-    const AnalysisEvaluationBudget* budget = nullptr);
+    const AnalysisEvaluationBudget* budget = nullptr,
+    bool allowCleanRaisedMatteExterior = false);
 
 // The supplied measurements must come from this exact immutable source frame,
 // before caption or temporal-policy refinement. Sample totals retain the direct
@@ -493,7 +494,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     const ActivePictureGlobalNearBlackEvidence& global,
     const ActivePictureArDarknessEvidence& arDarkness,
     const AnalysisEvaluationBudget* budget = nullptr,
-    const AnalysisEvaluationBudget* relativeBudget = nullptr);
+    const AnalysisEvaluationBudget* relativeBudget = nullptr,
+    bool allowCleanRaisedMatteExterior = false);
 
 // Remeasure only the expansion strips for a corrected, exact candidate on the
 // same decoded source that produced currentRetention. This keeps the raw

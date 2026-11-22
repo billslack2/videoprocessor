@@ -33,6 +33,7 @@ struct PreparedPictureEvidenceKey
     // Identical concurrent completions share it; replacement contexts use a new slot.
     std::shared_ptr<const void> rawOwner;
     AlphaSourceCrop::InwardCaptionReference caption;
+    bool verifyCleanRaisedMatte = false;
 };
 
 inline bool SamePreparedPictureBounds(const ActivePictureBounds& a, const ActivePictureBounds& b)
@@ -67,7 +68,8 @@ inline bool SamePreparedPictureFrame(const PreparedAnalysisFrame& a, const Prepa
 inline bool SamePreparedPictureEvidenceKey(const PreparedPictureEvidenceKey& a,
     const PreparedPictureEvidenceKey& b)
 {
-    return a.kind == b.kind && SameAnalysisFrameIdentity(a.identity, b.identity) &&
+    return a.kind == b.kind && a.verifyCleanRaisedMatte == b.verifyCleanRaisedMatte &&
+        SameAnalysisFrameIdentity(a.identity, b.identity) &&
         SamePreparedPictureFrame(a.frame, b.frame) && SamePreparedPictureBounds(a.base, b.base) &&
         a.policyGeneration == b.policyGeneration && a.continuityGeneration == b.continuityGeneration &&
         SamePreparedPictureOwner(a.rawOwner, b.rawOwner) &&
@@ -132,7 +134,7 @@ inline PreparedPictureEvidence EvaluatePreparedPictureEvidence(const PreparedPic
     {
     case PreparedPictureEvidenceKind::Retention:
         result.retention = EvaluateActivePicturePresentationRetention(
-            key.frame.source, key.base, raw, darkness.global, darkness, budget, relativeBudget);
+            key.frame.source, key.base, raw, darkness.global, darkness, budget, relativeBudget, key.verifyCleanRaisedMatte);
         result.retention.relativeContinuation.identity=key.identity;
         result.retention.relativeContinuation.policyGeneration=key.policyGeneration;
         result.retention.relativeContinuation.continuityGeneration=key.continuityGeneration;
@@ -188,14 +190,18 @@ public:
         const ActivePictureBounds& base, uint64_t policy, uint64_t continuity,
         const std::shared_ptr<const void>& rawOwner) const
     {
+        std::shared_ptr<const Result> ordinary;
         for (const auto& entry:m_entries[static_cast<size_t>(PreparedPictureEvidenceKind::Retention)]) {
             if (!entry.slot || !SameAnalysisFrameIdentity(entry.key.identity,identity) ||
                 !SamePreparedPictureBounds(entry.key.base,base) || entry.key.policyGeneration!=policy ||
                 entry.key.continuityGeneration!=continuity || !SamePreparedPictureOwner(entry.key.rawOwner,rawOwner)) continue;
             const auto ready=Worker::Ready(entry.slot);
-            if (ready && SamePreparedPictureEvidenceKey(ready->key,entry.key)) return ready;
+            if (ready && SamePreparedPictureEvidenceKey(ready->key,entry.key)) {
+                if (ready->key.verifyCleanRaisedMatte) return ready;
+                ordinary=ready;
+            }
         }
-        return nullptr;
+        return ordinary;
     }
 
     // Existing ready/pending requests return the same slot. The caller checks

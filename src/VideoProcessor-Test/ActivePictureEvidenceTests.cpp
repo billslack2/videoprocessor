@@ -2819,9 +2819,23 @@ namespace VideoProcessorTest
                 raw.read(reinterpret_cast<char*>(frame.bytes.data()),std::streamsize(frame.bytes.size()));
                 Assert::IsTrue(bool(raw));
                 auto luma=frame.P010Source();
+                std::string metadataName=names[i];
+                metadataName.replace(metadataName.size()-4,4,".txt");
+                std::ifstream metadata(dir+"/"+metadataName);
+                int width,height,format,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,chromaPitch;
+                metadata>>width>>height>>pitch>>chromaPitch>>format>>encoding>>colorspace>>top>>bottom>>hint>>range;
+                Assert::IsTrue(bool(metadata));
+                Assert::AreEqual(frame.width,width); Assert::AreEqual(frame.height,height);
+                Assert::AreEqual(frame.pitch,pitch); Assert::AreEqual(frame.pitch,chromaPitch);
+                Assert::AreEqual(int(AnalysisLumaFormat::P010),format);
+                Assert::AreEqual(base.top,top); Assert::AreEqual(base.bottom,bottom);
+                luma.encoding=static_cast<VideoFrameEncoding>(encoding);
+                luma.colorspace=static_cast<ColorSpace>(colorspace);
+                luma.range=static_cast<AnalysisLumaRange>(range);
                 const uint64_t generation=i<3?1:2, seq=i<3?1373+i:37970+i-3;
                 luma.generation=generation;
-                const auto evidence=EvaluateActivePicturePresentationRetention(luma,base);
+                const auto evidence=EvaluateActivePicturePresentationRetention(luma,base,nullptr,true);
                 Assert::IsTrue(evidence.pairedRaisedEdgeContrast && evidence.raisedMatteExteriorVerified,
                     L"Each source must independently prove both guard exteriors.");
                 auto input=RaisedBroadcastCropInput(base,evidence,seq);
@@ -2845,8 +2859,30 @@ namespace VideoProcessorTest
             std::ifstream raw(dir+"/matte-28840-134397888180449267-2270965133376-g1-s2154-3.bin",std::ios::binary);
             raw.read(reinterpret_cast<char*>(title.bytes.data()),std::streamsize(title.bytes.size()));
             Assert::IsTrue(bool(raw));
-            const auto titleEvidence=EvaluateActivePicturePresentationRetention(title.P010Source(),base);
+            auto titleSource=title.P010Source();
+            titleSource.encoding=static_cast<VideoFrameEncoding>(14);
+            titleSource.colorspace=static_cast<ColorSpace>(4);
+            titleSource.range=static_cast<AnalysisLumaRange>(1);
+            const auto titleEvidence=EvaluateActivePicturePresentationRetention(titleSource,base,nullptr,true);
             Assert::IsFalse(titleEvidence.raisedMatteExteriorVerified,L"The recorded title/UI must not certify a crop that excludes it.");
+        }
+
+        TEST_METHOD(TrialRaisedGuardPreservesCrossingMarksOutsideEnvelope)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            for (int width : {64,128}) for (int luma : {126,143,700}) {
+                auto frame=MovingBroadcastEdge(0,true);
+                frame.FillRectangle(1300,1896,1300+width,1930,luma);
+                const auto evidence=EvaluateActivePicturePresentationRetention(frame.P010Source(),base,nullptr,true);
+                auto input=RaisedBroadcastCropInput(base,evidence,1);
+                input.stabilizeRaisedMatteEnvelope=true;
+                auto selected=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+                RaisedMattePresentationHold hold{};
+                ProtectCurrentNativeMatteDetail(selected,input,evidence,base,1,1,&hold,1000,2000,42);
+                Assert::IsTrue(!selected.presentation.applyCrop || selected.presentation.sourceBounds.bottom>=1930,
+                    L"The presentation must retain the current attached mark beyond the fixed guard.");
+            }
         }
 
         TEST_METHOD(FirstRaisedAdScopeRequiresCurrentTrustedAuthorityAndVerifiedExterior)

@@ -5908,7 +5908,8 @@ namespace AlphaSourceCrop
                 exactCurrentRetention && exactCurrentRetention->analysisValid &&
                 exactCurrentRetention->presentationValid && exactCurrentRetention->pairedRaisedEdgeContrast &&
                 exactCurrentRetention->raisedMatteExteriorVerified && exactCurrentRetention->outwardVisibleBoundsAvailable &&
-                SameBounds(exactCurrentRetention->outwardVisibleBounds,input.currentVisibleBounds)) {
+                SameBounds(exactCurrentRetention->outwardVisibleBounds,input.currentVisibleBounds) &&
+                (!input.stabilizeRaisedMatteEnvelope || RaisedMatteMarginContainsCurrentDetail(input,*exactCurrentRetention))) {
                 result.presentation = RaisedMatteMargin(input,"acquired scope with verified raised matte margin");
             } else {
                 result.blocked = true;
@@ -6016,6 +6017,7 @@ namespace AlphaSourceCrop
         }
         const bool bounded = clipped && hold && nativePose && retention.pairedRaisedEdgeContrast &&
             retention.raisedMatteExteriorVerified &&
+            (!input.stabilizeRaisedMatteEnvelope || RaisedMatteMarginContainsCurrentDetail(input,retention)) &&
             (!protectTop || top.nativePixelY >= base.top - margin) &&
             (!protectBottom || bottom.nativePixelY < base.bottom + margin);
         if (clipped && !bounded) {
