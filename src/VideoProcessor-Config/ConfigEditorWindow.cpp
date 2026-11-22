@@ -10579,7 +10579,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         QStringLiteral("logging"), QStringLiteral("debug"), false);
     enhanced->setObjectName(QStringLiteral("config.logging.debug"));
     enhanced->setAccessibleDescription(QStringLiteral(
-        "Keep all VP logs and write additional live telemetry files for diagnosis."));
+        "Include detailed diagnostics in the VP log and write additional live telemetry files."));
     layout->addWidget(enhanced);
 
     auto* retention = new QSpinBox;
@@ -10608,16 +10608,15 @@ QWidget* ConfigEditorWindow::createLogsPage()
     {
         const bool loggingEnabled = enabled->isChecked();
         enhanced->setEnabled(loggingEnabled);
-        retention->setEnabled(loggingEnabled && !enhanced->isChecked());
+        retention->setEnabled(loggingEnabled);
     };
     connect(enabled, &QCheckBox::toggled, this, syncLoggingControls);
-    connect(enhanced, &QCheckBox::toggled, this, syncLoggingControls);
     syncLoggingControls();
     layout->addWidget(fieldWithHelp(QStringLiteral("Log files to keep"), retention,
         QStringLiteral("1–100 total files, including the active log. Default: 10. Changes apply when VP next starts.")));
 
     layout->addWidget(helpLabel(QStringLiteral(
-        "Enhanced logging keeps all logs and writes additional live telemetry files. Use it only while diagnosing an issue.")));
+        "VP rotates the main log at startup in both modes. Separate live telemetry files are kept outside log retention.")));
 
     QString logDirectory = QFileInfo(configPath_).absoluteDir().filePath(QStringLiteral("logs"));
     const QString logPath = QDir(logDirectory).filePath(QStringLiteral("vp.log"));

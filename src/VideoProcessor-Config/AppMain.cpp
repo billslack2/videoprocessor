@@ -29,6 +29,7 @@
 #include <QWinEventNotifier>
 
 #include <functional>
+#include <memory>
 #include <cwctype>
 #include <cstdint>
 #include <utility>
@@ -299,6 +300,56 @@ bool activateExistingWindow(quintptr owner, DWORD ownerProcessId)
     return false;
 }
 
+// The player starts one persistent Config tray for this interactive session.
+// Direct launches and update-tool workflows continue to have their own lifetime.
+class ManagedTray
+{
+public:
+    bool acquire()
+    {
+        if (!owner_ || !handoff_ || !request_ || !lock(handoff_.get(), WaitMs))
+            return false;
+
+        ownsTray_ = lock(owner_.get(), 0);
+        if (!ownsTray_ && SetEvent(request_.get()))
+            ownsTray_ = lock(owner_.get(), WaitMs);
+
+        ResetEvent(request_.get());
+        ReleaseMutex(handoff_.get());
+        return ownsTray_;
+    }
+
+    ~ManagedTray()
+    {
+        if (ownsTray_) ReleaseMutex(owner_.get());
+    }
+
+    HANDLE requestEvent() const { return request_.get(); }
+
+    bool replacementIsWaiting() const
+    {
+        const DWORD result = WaitForSingleObject(handoff_.get(), 0);
+        if (result == WAIT_OBJECT_0 || result == WAIT_ABANDONED)
+            ReleaseMutex(handoff_.get());
+        return result == WAIT_TIMEOUT;
+    }
+
+private:
+    using Handle = std::unique_ptr<void, decltype(&CloseHandle)>;
+    static constexpr DWORD WaitMs = 2500;
+
+    static bool lock(HANDLE mutex, DWORD timeout)
+    {
+        const DWORD result = WaitForSingleObject(mutex, timeout);
+        return result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
+    }
+
+    Handle owner_{CreateMutexW(nullptr, FALSE, L"Local\\VideoProcessor.ConfigTray.Owner.v1"), CloseHandle};
+    Handle handoff_{CreateMutexW(nullptr, FALSE, L"Local\\VideoProcessor.ConfigTray.Handoff.v1"), CloseHandle};
+    Handle request_{CreateEventW(nullptr, FALSE, FALSE, L"Local\\VideoProcessor.ConfigTray.Replace.v1"), CloseHandle};
+    bool ownsTray_ = false;
+};
+
 bool highContrastEnabled()
 {
     HIGHCONTRASTW settings{};
@@ -347,6 +398,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     quintptr owner = 0;
     DWORD ownerProcessId = 0;
     bool startInTray = false;
+    bool playerWarmStart = false;
     bool showUpdates = false;
     QStringList arguments;
     int nativeArgumentCount = 0;
@@ -409,7 +461,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         else if (arguments[index] == QStringLiteral("--restore-visible"))
             startInTray = false;
         else if (arguments[index] == QStringLiteral("--background"))
+        {
             startInTray = true;
+            playerWarmStart = true;
+        }
         else if (arguments[index] == QStringLiteral("--page") && index + 1 < arguments.size())
         {
             bool pageOk = false;
@@ -472,6 +527,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 0;
     }
 
+    std::unique_ptr<ManagedTray> tray;
+    if (playerWarmStart || owner != 0)
+    {
+        tray = std::make_unique<ManagedTray>();
+        if (!tray->acquire())
+        {
+            if (!startInTray)
+                QMessageBox::information(nullptr, QStringLiteral("VideoProcessor Configuration"),
+                    QStringLiteral("The previous Configuration instance is still shutting down. Try opening Configuration again."));
+            if (updatesEvent) CloseHandle(updatesEvent);
+            if (activationEvent) CloseHandle(activationEvent);
+            if (SUCCEEDED(comResult)) CoUninitialize();
+            return 0;
+        }
+    }
+
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner,
 		false, {}, {}, remoteHost, remotePort, remoteName, noTarget,
 		localAvailable, rememberedTarget, rememberedLabel);
@@ -495,6 +566,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 	if (noTarget)
 		QTimer::singleShot(5000, &window,
 			[&window] { window.finishInitialTargetSearch(); });
+    std::unique_ptr<QWinEventNotifier> replacementNotifier;
+    if (tray)
+    {
+        replacementNotifier = std::make_unique<QWinEventNotifier>(tray->requestEvent(), &window);
+        QObject::connect(replacementNotifier.get(), &QWinEventNotifier::activated,
+            &window, [&window, &tray]
+            {
+                if (tray->replacementIsWaiting())
+                    window.exitApplication();
+            });
+    }
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
     {
