@@ -6,6 +6,7 @@
 #include <SubtitleMeasurementWorker.h>
 #include <DebugLog.h>
 #include <vprenderer/InputAnalysisCadence.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
 #include <future>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
@@ -1798,6 +1799,171 @@ namespace VideoProcessorTest
             ProtectCurrentNativeMatteDetail(change,in,e,expanded,1,2006);
             Assert::AreEqual(248,change.presentation.sourceBounds.top);
             Assert::AreEqual(1910,change.presentation.sourceBounds.bottom);
+        }
+
+        TEST_METHOD(OptionalRecordedB200AcquisitionTransitionsAndTitle)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t length=0;
+            _dupenv_s(&value,&length,"VP_B200_INCIDENT_REPLAY_DIR");
+            const std::string dir=value ? value : ""; std::free(value);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_B200_INCIDENT_REPLAY_DIR to replay the four recorded transitions.");
+                return;
+            }
+            struct Frame {
+                P010Frame pixels{3840,2160}; uint64_t seq=0,timestamp=0,transport=0,domain=0;
+                bool found=false;
+            };
+            Frame frames[4]; const uint64_t expectedSeq[]={1307,1348,1875,2173};
+            WIN32_FIND_DATAA entry={}; std::vector<std::string> sidecars;
+            HANDLE search=FindFirstFileA((dir+"\\*.txt").c_str(),&entry);
+            Assert::IsTrue(search!=INVALID_HANDLE_VALUE);
+            do {if(!(entry.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)) sidecars.push_back(dir+"\\"+entry.cFileName);}
+            while(FindNextFileA(search,&entry));
+            FindClose(search);
+            for(const auto& path:sidecars) {
+                std::ifstream meta(path);
+                int w,h,fmt,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,uvPitch; std::string identity;
+                uint64_t transport,sequence,number,timestamp,sourceFormat,viewport,renderer,domain,policy,continuity;
+                int nearBar,optimization,duration,discontinuity,repeat,alignment;
+                meta>>w>>h>>pitch>>uvPitch>>fmt>>encoding>>colorspace>>top>>bottom>>hint>>range
+                    >>identity>>transport>>sequence>>number>>timestamp>>sourceFormat>>viewport>>renderer>>domain
+                    >>policy>>continuity>>nearBar>>optimization>>duration>>discontinuity>>repeat>>alignment;
+                Assert::IsTrue(bool(meta)&&identity=="identity_v1");
+                int index=-1; for(int i=0;i<4;++i) if(sequence==expectedSeq[i]) index=i;
+                Assert::IsTrue(index>=0); Assert::IsFalse(frames[index].found);
+                std::string submitted,acquisition,margin,evidenceGeneration,evidenceSequence,evidenceDomain;
+                int left,displayTop,right,displayBottom,acquired,onset; uint64_t eg,es,ed;
+                meta>>submitted>>left>>displayTop>>right>>displayBottom>>acquisition>>acquired>>margin>>onset
+                    >>evidenceGeneration>>eg>>evidenceSequence>>es>>evidenceDomain>>ed;
+                Assert::IsTrue(bool(meta)&&submitted=="submitted"&&acquisition=="acquisition"&&margin=="margin_onset"&&
+                    evidenceGeneration=="evidence_generation"&&evidenceSequence=="evidence_sequence"&&evidenceDomain=="evidence_domain");
+                Assert::AreEqual(3840,w); Assert::AreEqual(2160,h);
+                Assert::AreEqual(size_t(7680),pitch); Assert::AreEqual(pitch,uvPitch);
+                Assert::AreEqual(int(AnalysisLumaFormat::P010),fmt); Assert::AreEqual(int(ColorSpace::REC_709),colorspace);
+                Assert::AreEqual(int(AnalysisLumaRange::Limited),range); Assert::AreEqual(260,top); Assert::AreEqual(1898,bottom);
+                Assert::AreEqual(0,left); Assert::AreEqual(3840,right);
+                Assert::AreEqual(index==0 ? 262 : 238,displayTop); Assert::AreEqual(index==0 ? 1896 : 1920,displayBottom);
+                Assert::AreEqual((index==0||index==3)?1:0,acquired);
+                Assert::AreEqual((index==1||index==2)?1:0,onset);
+                if(onset) Assert::IsTrue(eg==transport&&es==sequence&&ed==domain);
+                const auto bin=path.substr(0,path.size()-4)+".bin";
+                std::ifstream raw(bin,std::ios::binary|std::ios::ate); Assert::IsTrue(bool(raw));
+                Assert::IsTrue(raw.tellg()==std::streamoff(frames[index].pixels.bytes.size()));
+                raw.seekg(0); raw.read(reinterpret_cast<char*>(frames[index].pixels.bytes.data()),
+                    std::streamsize(frames[index].pixels.bytes.size())); Assert::IsTrue(bool(raw));
+                frames[index].seq=sequence;frames[index].timestamp=timestamp;
+                frames[index].transport=transport;frames[index].domain=domain;frames[index].found=true;
+            }
+            for(const auto& f:frames) Assert::IsTrue(f.found);
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            const auto present=[&](const Frame& f,const CropPresentationAdmissionState& previous,
+                RaisedMattePresentationHold* hold,bool refinement,bool translate) {
+                auto source=f.pixels.P010Source();source.range=AnalysisLumaRange::Limited;
+                source.colorspace=ColorSpace::REC_709;source.generation=f.transport;
+                const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                auto input=RaisedBroadcastCropInput(native,evidence,f.seq);
+                input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=f.transport;
+                input.framePresentationEpoch=3; input.barCropRefinementPending=refinement;
+                if(refinement) input.latestObservationSupportsCrop=false;
+                if(translate) {input.verticalTranslationActive=true;input.verticalTranslationBase=native;
+                    input.verticalTranslationSourceGeneration=f.transport;input.verticalTranslationPixels=216;}
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),3,&evidence);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,f.transport,
+                    f.seq,hold,f.timestamp/10000,2000,f.domain);
+                FinalAspectLimitFillInput fill;fill.crop=input;fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true;fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                return std::make_pair(selected,result.applied ? result.sourceBounds : selected.presentation.sourceBounds);
+            };
+            const auto fullWidth=[](const ActivePictureBounds& b) {
+                Assert::AreEqual(0,b.left);Assert::AreEqual(262,b.top);
+                Assert::AreEqual(3840,b.right);Assert::AreEqual(1896,b.bottom);
+            };
+            RaisedMattePresentationHold hold{};
+            const auto acquired=present(frames[0],{},&hold,false,false);
+            Assert::IsTrue(acquired.first.presentation.applyCrop);fullWidth(acquired.second);
+            // These are sparse incident records, not an uninterrupted replay.
+            // S1348 was in bar refinement; S1875 had accepted current geometry.
+            const auto refinement=present(frames[1],acquired.first.state,&hold,true,false);
+            const auto renewal=present(frames[2],refinement.first.state,&hold,false,false);
+            const auto coldRefinement=present(frames[1],{},nullptr,false,false);
+            const auto coldRenewal=present(frames[2],{},nullptr,false,false);
+            fullWidth(refinement.second);fullWidth(renewal.second);
+            fullWidth(coldRefinement.second);fullWidth(coldRenewal.second);
+            // Preserve separately added current-source strokes while the
+            // established crop/refinement state is live. Both samples are
+            // actual ad frames; the overlay itself is synthetic.
+            for(int index:{1,2}) {
+                auto attached=frames[index];
+                attached.pixels.FillRectangle(1789,1893,1837,1915,126,512,512);
+                const auto shown=present(attached,acquired.first.state,nullptr,index==1,false);
+                Assert::IsTrue(!shown.first.presentation.applyCrop || shown.second.bottom>=1915);
+                auto detached=frames[index];
+                detached.pixels.FillRectangle(3000,1910,3004,1914,129,512,512);
+                const auto dot=present(detached,acquired.first.state,nullptr,index==1,false);
+                Assert::IsTrue(!dot.first.presentation.applyCrop || dot.second.bottom>=1914);
+            }
+            // S2173 contains actual bottom legal/title pixels and playback UI.
+            // The recorded 238..1920 crop omitted the lower content. A safe
+            // Classic result must keep it, whether expanded or translated.
+            AnalysisLumaSample legalPixel; auto title=frames[3].pixels.P010Source();
+            Assert::IsTrue(title.Sample(1434,2048,legalPixel) && legalPixel.luma>200);
+            const auto classic=present(frames[3],renewal.first.state,&hold,false,true);
+            Assert::IsTrue(classic.second.bottom>2048);
+            // Reproduce the competing late recovery decision: S2173 has a
+            // current dense result on both edges while the submitted envelope
+            // and the Classic translation each omit part of the current image.
+            ActivePictureFrameIdentity id{}; id.transportGeneration=frames[3].transport;
+            id.acceptedSequence=frames[3].seq; id.analysisDomainKey=frames[3].domain;
+            auto titleSource=frames[3].pixels.P010Source(); titleSource.range=AnalysisLumaRange::Limited;
+            ActivePictureMeasurementCache cache(false); cache.Begin(titleSource,id,2,8);
+            const auto content=cache.SubtitleContent(native,119);
+            Assert::IsTrue(content.upper && content.lower && content.lowerBottom>2048);
+            PresentationRecoveryInput recovery;
+            auto titleEvidence=EvaluateActivePicturePresentationRetention(titleSource,native);
+            recovery.crop=RaisedBroadcastCropInput(native,titleEvidence,frames[3].seq);
+            recovery.crop.geometrySourceGeneration=recovery.crop.frameSourceGeneration=
+                recovery.crop.currentVisibleSourceGeneration=frames[3].transport;
+            recovery.crop.framePresentationEpoch=recovery.presentationEpoch=3;
+            recovery.crop.verticalTranslationActive=true; recovery.crop.verticalTranslationBase=native;
+            recovery.crop.verticalTranslationSourceGeneration=frames[3].transport;
+            recovery.crop.verticalTranslationPixels=216;
+            recovery.measurementCurrent=recovery.retentionEvaluated=true;
+            recovery.retentionBounds=native;recovery.retentionSourceGeneration=frames[3].transport;
+            recovery.retentionSourceSequence=frames[3].seq;
+            recovery.confirmedPresentationResolved=true; recovery.candidate=classic.first.presentation;
+            auto& anchor=recovery.submittedScopeAnchor;
+            anchor.available=true;anchor.crop=native;anchor.sourceGeneration=frames[3].transport;
+            anchor.presentationEpoch=3;anchor.lastSubmittedSourceSequence=frames[2].seq;
+            anchor.lastSubmittedPresentationSourceSequence=frames[2].seq;
+            anchor.submittedEnvelopeAvailable=true;anchor.submittedEnvelopeSourceSequence=frames[2].seq;
+            anchor.submittedEnvelope=ScopePresentation(3840,2160,238,1920);
+            recovery.currentBarContentAvailable=true;recovery.currentBarContentBase=native;
+            recovery.currentBarContentBounds={0,content.upperTop,3840,content.lowerBottom,3840,2160,0,
+                ActivePictureBounds::BarAxes::NONE};
+            recovery.currentBarContentGeneration=frames[3].transport;
+            recovery.currentBarContentSequence=frames[3].seq;recovery.currentBarContentEpoch=3;
+            Decision held; held.applyCrop=true;held.owner=DecisionOwner::OUTWARD_FIT;
+            held.outwardExpanded=true;held.sourceBounds=anchor.submittedEnvelope;
+            const auto safe=ResolveUncertainPicturePresentation(recovery,held);
+            Assert::IsTrue(safe.retained && safe.currentPixelExtent && safe.expanded);
+            Assert::IsTrue(safe.presentation.sourceBounds.top<=content.upperTop &&
+                safe.presentation.sourceBounds.bottom>=content.lowerBottom);
+            Assert::IsTrue(safe.presentation.sourceBounds.top<=native.top &&
+                safe.presentation.sourceBounds.bottom>=native.bottom);
+            // A confirmed translation which clips the independently current
+            // opposite-edge UI likewise cannot outrank the safe current frame.
+            const auto translationConflict=ResolveUncertainPicturePresentation(recovery,recovery.candidate);
+            Assert::IsTrue(translationConflict.retained && translationConflict.currentPixelExtent);
+            Assert::IsTrue(translationConflict.presentation.sourceBounds.top<=content.upperTop &&
+                translationConflict.presentation.sourceBounds.bottom>=content.lowerBottom);
         }
 
         TEST_METHOD(OptionalExactSubmittedMatteIncidentsPreserveScopeAndText)

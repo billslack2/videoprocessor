@@ -17991,6 +17991,28 @@ releaseDriftBaseRetention =
                         coldCaptionDecision.presentation.sourceBounds,
                         coldCaptionDecision.presentation.sourceBounds);
             }
+            // The current dense bar pass supplies pixel-preservation evidence,
+            // independent of its later caption/translation ownership decision.
+            // Never substitute coarse full-raster occupancy or stale content.
+            if (subtitleBarAnalysisCompleted && scopeCurrentVerticalGeneration==frameGeneration &&
+                scopeCurrentVerticalSequence==sourceSequence &&
+                sameNative(scopeCurrentVerticalBase,cropInput.geometry)) {
+                const bool upper=scopeCurrentVerticalContent.upperContent &&
+                    scopeCurrentVerticalBounds.top<cropInput.geometry.top;
+                const bool lower=scopeCurrentVerticalContent.lowerContent &&
+                    scopeCurrentVerticalBounds.bottom>cropInput.geometry.bottom;
+                if (upper || lower) {
+                    auto content=scopeCurrentVerticalBounds;
+                    if (!upper) content.top=cropInput.geometry.bottom;
+                    if (!lower) content.bottom=cropInput.geometry.top;
+                    recoveryInput.currentBarContentAvailable=true;
+                    recoveryInput.currentBarContentBase=cropInput.geometry;
+                    recoveryInput.currentBarContentBounds=content;
+                    recoveryInput.currentBarContentGeneration=frameGeneration;
+                    recoveryInput.currentBarContentSequence=sourceSequence;
+                    recoveryInput.currentBarContentEpoch=viewportRequestSerial;
+                }
+            }
             const auto uncertainPicture = AlphaSourceCrop::ResolveUncertainPicturePresentation(
                 recoveryInput, admissionDecision.presentation);
             if (uncertainPicture.retained)

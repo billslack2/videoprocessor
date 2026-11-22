@@ -1880,6 +1880,12 @@ namespace AlphaSourceCrop
 		ActivePictureBounds retentionBounds;
 		uint64_t retentionSourceGeneration = 0;
 		uint64_t retentionSourceSequence = 0;
+        // Independently measured current-frame bar content, not coarse AR
+        // occupancy. This is a pixel-preservation witness, never AR authority.
+        bool currentBarContentAvailable = false;
+        ActivePictureBounds currentBarContentBase, currentBarContentBounds;
+        uint64_t currentBarContentGeneration = 0, currentBarContentSequence = 0;
+        uint64_t currentBarContentEpoch = 0;
 		bool nearBlackEvaluated = false;
 		bool globalNearBlack = false;
 		// Only a confirmed current dense presentation or a completed episode
@@ -2046,6 +2052,9 @@ namespace AlphaSourceCrop
         bool retained = false;
         bool expanded = false;
         bool currentPixelExtent = false;
+        // Current dense bar-content witness requires final presentation to
+        // retain its measured pixels, including when the candidate contains it.
+        bool currentBarContentProtected = false;
         ActivePictureBounds nativeCrop;
         Decision presentation;
     };

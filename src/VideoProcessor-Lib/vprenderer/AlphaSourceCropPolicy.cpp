@@ -6344,7 +6344,21 @@ namespace AlphaSourceCrop
                 crop.rasterWidth, crop.rasterHeight))
             return result;
 
-        if (HasConfirmedPresentationCandidate(input, proposed))
+        const bool currentBarContent = input.currentBarContentAvailable &&
+            input.currentBarContentGeneration == crop.frameSourceGeneration &&
+            input.currentBarContentSequence == crop.frameSourceSequence &&
+            input.currentBarContentEpoch == input.presentationEpoch &&
+            input.presentationEpoch == crop.framePresentationEpoch &&
+            SameTrustedCropContract(input.currentBarContentBase,anchor.crop) &&
+            ValidBounds(input.currentBarContentBounds,crop.rasterWidth,crop.rasterHeight);
+        const bool contentOutsideNative = currentBarContent &&
+            !ContainedBounds(anchor.crop,input.currentBarContentBounds);
+        result.currentBarContentProtected = contentOutsideNative;
+        const bool proposedContainsContent = !proposed.applyCrop ||
+            (ValidBounds(proposed.sourceBounds,crop.rasterWidth,crop.rasterHeight) &&
+             ContainedBounds(proposed.sourceBounds,input.currentBarContentBounds));
+        if (HasConfirmedPresentationCandidate(input, proposed) &&
+            (!contentOutsideNative || proposedContainsContent))
         {
             if(HasCurrentConfirmedOutwardCandidate(input,proposed))
                 result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
@@ -6408,7 +6422,7 @@ namespace AlphaSourceCrop
             !crop.movingPictureTransition && !crop.pictureTransitionHandoff.active;
         if (proposed.applyCrop && ValidBounds(proposed.sourceBounds, crop.rasterWidth, crop.rasterHeight) &&
             !SameBounds(proposed.sourceBounds, raster) && !retainSubmittedEnvelope && !retainedSamplingExtent &&
-            !unconfirmedVerticalFit)
+            !unconfirmedVerticalFit && (!contentOutsideNative || proposedContainsContent))
             return result;
         auto bounds = anchor.crop;
         auto include = [&](const ActivePictureBounds& extent) {
@@ -6427,6 +6441,14 @@ namespace AlphaSourceCrop
             ValidBounds(anchor.submittedEnvelope, crop.rasterWidth, crop.rasterHeight) &&
             ContainedBounds(anchor.submittedEnvelope, anchor.crop))
             include(anchor.submittedEnvelope);
+
+        // Independently current dense bar content is a preservation witness.
+        // A submitted envelope cannot hide it, and this union never replaces
+        // the native picture, invents caption ownership, or proves absence.
+        if (contentOutsideNative) {
+            include(input.currentBarContentBounds);
+            result.currentPixelExtent = true;
+        }
 
         // Current visible samples remain acquisition/inspection evidence.
         // Without an independently confirmed presentation owner they cannot

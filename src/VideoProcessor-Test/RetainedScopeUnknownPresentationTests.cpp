@@ -236,6 +236,59 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(CurrentDenseBarContentCannotBeHiddenBySubmittedEnvelope)
+        {
+            auto input=UnknownIncident();
+            const auto previous=VisibleBounds(256,1920);
+            auto& anchor=input.submittedScopeAnchor;
+            anchor.submittedEnvelopeAvailable=true; anchor.submittedEnvelope=previous;
+            anchor.submittedEnvelopeSourceSequence=anchor.lastSubmittedSourceSequence;
+            input.currentBarContentAvailable=true;
+            input.currentBarContentBase=IncidentScope();
+            input.currentBarContentBounds=VisibleBounds(1880,2050);
+            input.currentBarContentGeneration=input.crop.frameSourceGeneration;
+            input.currentBarContentSequence=input.crop.frameSourceSequence;
+            input.currentBarContentEpoch=input.presentationEpoch;
+            const auto output=ResolveUncertainPicturePresentation(input,input.candidate);
+            Assert::IsTrue(output.retained && output.currentPixelExtent && output.currentBarContentProtected && output.expanded);
+            AssertBounds(VisibleBounds(256,2050),output.presentation.sourceBounds);
+            AssertBounds(IncidentScope(),output.nativeCrop);
+            Assert::IsTrue(output.presentation.owner==DecisionOwner::OUTWARD_FIT);
+            // A stale, differently based, or unavailable witness cannot import
+            // foreign pixels or manufacture a wider presentation.
+            for(int fault:{0,1,2,3,4}) {
+                auto bad=input;
+                if(fault==0) bad.currentBarContentAvailable=false;
+                if(fault==1) --bad.currentBarContentSequence;
+                if(fault==2) ++bad.currentBarContentGeneration;
+                if(fault==3) ++bad.currentBarContentEpoch;
+                if(fault==4) bad.currentBarContentBase.top-=2;
+                const auto held=ResolveUncertainPicturePresentation(bad,bad.candidate);
+                Assert::IsTrue(held.retained && !held.currentPixelExtent && !held.currentBarContentProtected);
+                AssertBounds(previous,held.presentation.sourceBounds);
+            }
+            // A current confirmed Classic translation remains owner when its
+            // exact source rectangle contains the current content.
+            auto translated=input;
+            translated.crop.verticalTranslationActive=true;
+            translated.crop.verticalTranslationPixels=112;
+            translated.candidate=Evaluate(translated.crop);
+            translated.confirmedPresentationResolved=true;
+            translated.currentBarContentBounds=VisibleBounds(1880,1980);
+            const auto accepted=ResolveUncertainPicturePresentation(translated,translated.candidate);
+            Assert::IsFalse(accepted.retained);
+            Assert::IsTrue(accepted.currentBarContentProtected);
+            AssertBounds(translated.candidate.sourceBounds,accepted.presentation.sourceBounds);
+            // A confirmed pose that clips separately current content loses its
+            // shortcut; the current-source fallback preserves the old picture
+            // and content without upgrading either to native AR authority.
+            translated.currentBarContentBounds=VisibleBounds(1880,2050);
+            const auto conflict=ResolveUncertainPicturePresentation(translated,translated.candidate);
+            Assert::IsTrue(conflict.retained && conflict.currentPixelExtent && conflict.currentBarContentProtected);
+            Assert::IsTrue(conflict.presentation.sourceBounds.bottom>=2050);
+            Assert::IsTrue(conflict.presentation.sourceBounds.top<=IncidentScope().top);
+        }
+
         TEST_METHOD(PendingFitOrAConfirmationFlagCannotPromoteADifferentUnownedCandidate)
         {
             auto input=UnknownIncident();
