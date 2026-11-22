@@ -15495,6 +15495,43 @@ input.currentNativeBounds = crop.geometry;
             auto full=submitted.base; full.top=0; full.bottom=2160;
             Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,full,replacement));
         }
+        TEST_METHOD(CurrentNativeWitnessChecksFinalQualifiedPose)
+        {
+            // Models G2 S38661's logged current witness, not an unsaved frame.
+            auto context=Uncertain(38661);
+            auto& crop=context.crop;
+            crop.geometry={0,260,3840,1898,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            ActivePicturePresentationRetentionEvidence current{};
+            current.analysisValid=current.presentationValid=true;
+            current.visibleBottom.available=current.visibleBottom.nativePixelDetail=true;
+            current.visibleBottom.nativePixelX=1424; current.visibleBottom.nativePixelY=2056;
+            CropPresentationAdmissionDecision tight;
+            tight.presentation.applyCrop=true;
+            tight.presentation.sourceBounds=crop.geometry;
+            tight.presentation.sourceBounds.bottom=2050;
+            tight.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            tight.presentation.outwardExpanded=true;
+            Assert::IsTrue(ProtectCurrentNativeMatteDetail(tight,crop,current,crop.geometry,
+                crop.frameSourceGeneration,crop.frameSourceSequence));
+            Assert::IsTrue(tight.blocked);
+            Assert::IsFalse(tight.presentation.applyCrop);
+            Assert::AreEqual(2160,tight.presentation.sourceBounds.bottom);
+            // Pose ownership is assumed already established independently;
+            // this test does not infer it from the point or a chosen aspect.
+            CropPresentationAdmissionDecision translated;
+            translated.presentation.applyCrop=true;
+            translated.presentation.verticallyTranslated=true;
+            translated.presentation.owner=DecisionOwner::VERTICAL_TRANSLATION;
+            translated.presentation.sourceBounds=crop.geometry;
+            translated.presentation.sourceBounds.top=476;
+            translated.presentation.sourceBounds.bottom=2114;
+            Assert::IsTrue(ProtectCurrentNativeMatteDetail(translated,crop,current,crop.geometry,
+                crop.frameSourceGeneration,crop.frameSourceSequence),
+                L"The current witness remains a final-fill protection even when the owned pose contains it.");
+            Assert::IsFalse(translated.blocked);
+            Assert::AreEqual(476,translated.presentation.sourceBounds.top);
+            Assert::AreEqual(2114,translated.presentation.sourceBounds.bottom);
+        }
         TEST_METHOD(ExpiredRecoveryAndBlockedAdmissionStillUseSubmittedGeometry)
         {
             auto input=Uncertain();
