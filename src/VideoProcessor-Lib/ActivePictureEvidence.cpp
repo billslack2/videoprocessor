@@ -1521,6 +1521,48 @@ std::pair<int,int> FindDetachedMatteEdgePoint(SampleContext& samples,bool top,in
     return {-1,-1};
 }
 
+// Inspect current native boundary pixels for a narrow low-contrast stroke
+// that crosses from the picture into the removed matte. Sparse 256-column
+// sampling can miss such a stroke entirely. Require a coherent two-column,
+// two-depth signal, the same level just inside the picture, and brighter
+// picture on both sides. Work is bounded by one native row per edge.
+void ProtectNarrowAttachedMatteStroke(SampleContext& samples, bool top, int depth,
+    int matte, ExcludedBandVisibleExtent& extent) {
+    if (extent.nativePixelDetail || depth<=0) return;
+    const auto& source=samples.source;
+    const int inward=top ? 1 : -1;
+    const int boundary=top ? depth : source.height-depth-1;
+    const int offset=std::max(2,source.height/540);
+    const int outer=boundary-inward*offset;
+    const int inner=boundary+inward;
+    if (outer<0 || outer>=source.height || inner<0 || inner>=source.height) return;
+    const int spacing=std::max(2,source.width/240);
+    for (int x=0;x+1<source.width;++x) {
+        AnalysisLumaSample first;
+        if (!samples.Sample(x,boundary,first)) return;
+        if (first.luma<=matte+4 || first.luma>matte+12 ||
+            std::abs(int(first.chromaU)-512)>16 || std::abs(int(first.chromaV)-512)>16) continue;
+        bool coherent=true;
+        for (int dx=0;dx<2 && coherent;++dx) for (int row : {boundary,inner,outer,outer-inward}) {
+            AnalysisLumaSample v;
+            if (row<0 || row>=source.height || !samples.Sample(x+dx,row,v) ||
+                std::abs(int(v.luma)-int(first.luma))>2 ||
+                std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) { coherent=false; break; }
+        }
+        if (!coherent || x<spacing || x+1+spacing>=source.width) continue;
+        AnalysisLumaSample left,right;
+        if (!samples.Sample(x-spacing,boundary,left) || !samples.Sample(x+1+spacing,boundary,right) ||
+            left.luma<matte+24 || right.luma<matte+24) continue;
+        const bool hadExtent=extent.available;
+        extent.available=true; extent.nativePixelDetail=true;
+        extent.nativePixelX=x; extent.nativePixelY=outer;
+        const int coordinate=top ? outer : outer+1;
+        if (!hadExtent || (top ? coordinate<extent.coordinate : coordinate>extent.coordinate))
+            extent.coordinate=coordinate;
+        return;
+    }
+}
+
 // Look for a weak, spatially coherent detached component inside the margin.
 // Native row search is SIMD accelerated; all extra work has a hard cap. A
 // component must stand above its current local background and be separated
@@ -3706,6 +3748,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
             int(result.excludedBottom.lumaP90),bottomExtent,nullptr,pairedEdge,!inspectDetail,detachedBottom);
         result.raisedMatteExteriorVerified = pairedEdge && topVerified && bottomVerified;
         if (pairedEdge && result.raisedMatteExteriorVerified) {
+            ProtectNarrowAttachedMatteStroke(samples,true,trustedPresentation.top,
+                int(result.excludedTop.lumaP90),topExtent);
+            ProtectNarrowAttachedMatteStroke(samples,false,source.height-trustedPresentation.bottom,
+                int(result.excludedBottom.lumaP90),bottomExtent);
             ProtectWeakDetachedMatteComponent(samples,true,trustedPresentation.top,
                 int(result.excludedTop.lumaP90),topExtent);
             ProtectWeakDetachedMatteComponent(samples,false,source.height-trustedPresentation.bottom,
