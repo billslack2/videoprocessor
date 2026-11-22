@@ -15350,6 +15350,140 @@ input.currentNativeBounds = crop.geometry;
             return commit;
         }
     public:
+        TEST_METHOD(SubmittedPixelProtectionSurvivesSkippedInspectionWithoutOldPixels)
+        {
+            auto input=Uncertain(2154);
+            auto& crop=input.crop;
+            crop.framePresentationEpoch=input.presentationEpoch;
+            crop.geometry={0,260,3840,1898,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.submittedScopeAnchor.crop=crop.geometry;
+            input.submittedScopeAnchor.lastSubmittedSourceSequence=1373;
+            input.policyGeneration=2; input.continuityGeneration=6;
+            input.analysisDomain=42; input.sourceFormat=43;
+            SubmittedPixelProtectionCommitInput commit;
+            commit.frameSubmitted=true; commit.pixelProtected=true;
+            commit.base=crop.geometry;
+            commit.submittedBounds={0,0,3840,2160,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            commit.sourceGeneration=crop.frameSourceGeneration; commit.sourceSequence=2064;
+            commit.presentationEpoch=input.presentationEpoch; commit.policyGeneration=2;
+            commit.continuityGeneration=6; commit.analysisDomain=42; commit.sourceFormat=43;
+            auto saved=CommitSubmittedPixelProtection({},commit);
+            Assert::IsTrue(saved.available);
+            input.submittedPixelProtection=saved;
+            auto submitAnchor=[&](uint64_t seq,const Decision& decision) {
+                SubmittedNativeScopeAnchorUpdateInput update;
+                update.previous=input.submittedScopeAnchor; update.frameSubmitted=true;
+                update.nativeCropAvailable=true; update.nativeCrop=crop.geometry;
+                update.sourceGeneration=crop.frameSourceGeneration; update.sourceSequence=seq;
+                update.presentationEpoch=input.presentationEpoch; update.selectedOwner=decision.owner;
+                update.submittedBounds=decision.sourceBounds;
+                input.submittedScopeAnchor=CommitSubmittedNativeScopeAnchor(update);
+            };
+            Decision translated; translated.applyCrop=true; translated.verticallyTranslated=true;
+            translated.owner=DecisionOwner::VERTICAL_TRANSLATION;
+            translated.sourceBounds=crop.geometry;
+            translated.sourceBounds.top=476; translated.sourceBounds.bottom=2114;
+            auto first=ResolveUncertainPicturePresentation(input,translated);
+            Assert::IsTrue(first.retainedPixelProtection);
+            Assert::IsTrue(first.retained);
+            Assert::AreEqual(0,first.presentation.sourceBounds.top);
+            Assert::AreEqual(2160,first.presentation.sourceBounds.bottom);
+            submitAnchor(2154,first.presentation);
+            // A full view submitted under a generic outward owner can also be
+            // recorded by the native anchor. A fresh dense pass supersedes it.
+            input.submittedScopeAnchor.submittedEnvelopeAvailable=true;
+            input.submittedScopeAnchor.submittedEnvelope=first.presentation.sourceBounds;
+            input.submittedScopeAnchor.submittedEnvelopeSourceSequence=2154;
+
+            // Modeled dense pass at 2155 uses the extent logged at that source;
+            // the private S2154 frame independently establishes such pixels.
+            crop.frameSourceSequence=2155;
+            input.barInspectionCompleted=true;
+            input.currentBarContentAvailable=true; input.currentBarContentBase=crop.geometry;
+            input.currentBarContentBounds={0,212,3840,2050,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            input.currentBarContentGeneration=crop.frameSourceGeneration;
+            input.currentBarContentSequence=2155; input.currentBarContentEpoch=input.presentationEpoch;
+            auto current=ResolveUncertainPicturePresentation(input,translated);
+            Assert::IsTrue(current.retained && current.currentBarContentProtected);
+            Assert::AreEqual(212,current.presentation.sourceBounds.top);
+            Assert::AreEqual(2050,current.presentation.sourceBounds.bottom);
+            submitAnchor(2155,current.presentation);
+            commit.sourceSequence=2155; commit.barInspectionCompleted=true;
+            commit.submittedBounds=current.presentation.sourceBounds;
+            saved=CommitSubmittedPixelProtection(saved,commit);
+            Assert::AreEqual(212,saved.bounds.top);
+            for (uint64_t seq=2156;seq<=2273;++seq) {
+                crop.frameSourceSequence=seq;
+                input.submittedPixelProtection=saved;
+                input.barInspectionCompleted=false; input.currentBarContentAvailable=false;
+                const auto held=ResolveUncertainPicturePresentation(input,translated);
+                Assert::IsTrue(held.retained && held.retainedPixelProtection);
+                Assert::AreEqual(212,held.presentation.sourceBounds.top);
+                Assert::AreEqual(2050,held.presentation.sourceBounds.bottom);
+                submitAnchor(seq,held.presentation);
+                commit.sourceSequence=seq; commit.barInspectionCompleted=false;
+                commit.submittedBounds=held.presentation.sourceBounds;
+                saved=CommitSubmittedPixelProtection(saved,commit);
+            }
+            auto failed=commit; failed.frameSubmitted=false; failed.barInspectionCompleted=true;
+            failed.pixelProtected=false; failed.sourceSequence=2274;
+            Assert::IsTrue(CommitSubmittedPixelProtection(saved,failed).available);
+            auto stale=failed; stale.frameSubmitted=true; stale.sourceSequence=2155;
+            Assert::IsTrue(CommitSubmittedPixelProtection(saved,stale).available);
+            auto different=commit; different.sourceSequence=2274; different.pixelProtected=false;
+            different.presentationEpoch++; different.barInspectionCompleted=false;
+            Assert::IsFalse(CommitSubmittedPixelProtection(saved,different).available);
+            different=commit; different.sourceSequence=2274; different.pixelProtected=false;
+            different.sourceFormat++; different.barInspectionCompleted=false;
+            Assert::IsFalse(CommitSubmittedPixelProtection(saved,different).available);
+            different=commit; different.sourceSequence=2274; different.pixelProtected=false;
+            different.base.top+=4; different.barInspectionCompleted=false;
+            Assert::IsFalse(CommitSubmittedPixelProtection(saved,different).available);
+            commit.sourceSequence=2274; commit.barInspectionCompleted=true; commit.pixelProtected=false;
+            saved=CommitSubmittedPixelProtection(saved,commit);
+            Assert::IsFalse(saved.available);
+            crop.frameSourceSequence=2275; input.submittedPixelProtection=saved;
+            input.barInspectionCompleted=true;
+            const auto released=ResolveUncertainPicturePresentation(input,translated);
+            Assert::IsFalse(released.currentBarContentProtected);
+            Assert::IsFalse(released.retained);
+            Assert::IsTrue(released.presentation.owner==DecisionOwner::VERTICAL_TRANSLATION);
+            Assert::AreEqual(476,released.presentation.sourceBounds.top);
+            submitAnchor(2275,released.presentation);
+            Assert::IsFalse(input.submittedScopeAnchor.submittedEnvelopeAvailable);
+        }
+        TEST_METHOD(PreparedPixelProtectionRevalidatedAgainstSuccessfulSubmission)
+        {
+            SubmittedPixelProtectionCommitInput submitted;
+            submitted.frameSubmitted=true; submitted.pixelProtected=true;
+            submitted.base={0,260,3840,1898,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            submitted.submittedBounds={0,212,3840,2050,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            submitted.sourceGeneration=7; submitted.sourceSequence=2155; submitted.presentationEpoch=9;
+            submitted.policyGeneration=2; submitted.continuityGeneration=6;
+            submitted.analysisDomain=42; submitted.sourceFormat=43;
+            const auto saved=CommitSubmittedPixelProtection({},submitted);
+            auto prepared=submitted; prepared.sourceSequence=2156;
+            prepared.pixelProtected=false; prepared.barInspectionCompleted=false;
+            auto translated=submitted.base; translated.top=476; translated.bottom=2114;
+            ActivePictureBounds replacement;
+            Assert::IsTrue(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            Assert::AreEqual(212,replacement.top); Assert::AreEqual(2050,replacement.bottom);
+            prepared.sourceSequence=2155;
+            Assert::IsTrue(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.sourceSequence=2154;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.sourceSequence=2156; prepared.presentationEpoch++;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.presentationEpoch--; prepared.sourceFormat++;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.sourceFormat--; prepared.barInspectionCompleted=true;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.barInspectionCompleted=false; prepared.pixelProtected=true;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,translated,replacement));
+            prepared.pixelProtected=false;
+            auto full=submitted.base; full.top=0; full.bottom=2160;
+            Assert::IsFalse(RevalidateSelectedPixelProtection(saved,prepared,full,replacement));
+        }
         TEST_METHOD(ExpiredRecoveryAndBlockedAdmissionStillUseSubmittedGeometry)
         {
             auto input=Uncertain();

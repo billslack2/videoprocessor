@@ -1862,11 +1862,38 @@ namespace AlphaSourceCrop
         const ActivePictureEvidence& currentPhysicalEvidence);
 
 
+    // Presentation-only bounds of a pixel-protected view actually submitted.
+    // This records no old pixels, detector authority, or proof of absence.
+    struct SubmittedPixelProtection
+    {
+        bool available = false;
+        ActivePictureBounds base, bounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t policyGeneration = 0, continuityGeneration = 0, analysisDomain = 0, sourceFormat = 0;
+    };
+    struct SubmittedPixelProtectionCommitInput
+    {
+        ActivePictureBounds base, submittedBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t policyGeneration = 0, continuityGeneration = 0, analysisDomain = 0, sourceFormat = 0;
+        bool frameSubmitted = false;
+        bool pixelProtected = false;
+        bool barInspectionCompleted = false;
+    };
+    SubmittedPixelProtection CommitSubmittedPixelProtection(
+        const SubmittedPixelProtection& previous, const SubmittedPixelProtectionCommitInput& input);
+    bool RevalidateSelectedPixelProtection(const SubmittedPixelProtection& previous,
+        const SubmittedPixelProtectionCommitInput& prepared,
+        const ActivePictureBounds& selectedBounds, ActivePictureBounds& replacement);
+
 	struct PresentationRecoveryInput
 	{
 		PresentationRecoveryState previous;
 		CropPresentationAdmissionState previousAdmission;
 		SubmittedNativeScopeAnchor submittedScopeAnchor;
+        SubmittedPixelProtection submittedPixelProtection;
+        bool barInspectionCompleted = false;
+        uint64_t policyGeneration = 0, continuityGeneration = 0, analysisDomain = 0, sourceFormat = 0;
 		Input crop;
 		Decision candidate;
 		bool cadenceRepeat = false;
@@ -2055,6 +2082,9 @@ namespace AlphaSourceCrop
         // Current dense bar-content witness requires final presentation to
         // retain its measured pixels, including when the candidate contains it.
         bool currentBarContentProtected = false;
+        // Geometry of a successfully submitted protected view, carried across
+        // an unavailable inspection; never a current-frame pixel witness.
+        bool retainedPixelProtection = false;
         ActivePictureBounds nativeCrop;
         Decision presentation;
     };

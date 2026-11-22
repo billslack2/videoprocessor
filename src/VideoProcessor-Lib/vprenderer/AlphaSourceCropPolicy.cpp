@@ -6325,6 +6325,68 @@ namespace AlphaSourceCrop
 		return finish("native-anchor-committed");
 	}
 
+    SubmittedPixelProtection CommitSubmittedPixelProtection(
+        const SubmittedPixelProtection& previous, const SubmittedPixelProtectionCommitInput& input)
+    {
+        if (!input.frameSubmitted || !input.sourceGeneration || !input.sourceSequence)
+            return previous;
+        // An old selected packet cannot retire a newer submitted protection.
+        if (previous.available &&
+            (input.sourceGeneration < previous.sourceGeneration ||
+             (input.sourceGeneration == previous.sourceGeneration &&
+              input.sourceSequence <= previous.sourceSequence)))
+            return previous;
+        const bool sameContext = previous.available &&
+            previous.sourceGeneration == input.sourceGeneration &&
+            previous.presentationEpoch == input.presentationEpoch &&
+            previous.policyGeneration == input.policyGeneration &&
+            previous.continuityGeneration == input.continuityGeneration &&
+            previous.analysisDomain == input.analysisDomain && previous.sourceFormat == input.sourceFormat &&
+            SameTrustedCropContract(previous.base, input.base);
+        auto result = sameContext ? previous : SubmittedPixelProtection{};
+        if (input.pixelProtected &&
+            ValidBounds(input.base, input.submittedBounds.rasterWidth, input.submittedBounds.rasterHeight) &&
+            ValidBounds(input.submittedBounds, input.base.rasterWidth, input.base.rasterHeight) &&
+            ContainedBounds(input.submittedBounds, input.base))
+        {
+            result.available = true;
+            result.base = input.base;
+            result.bounds = input.submittedBounds;
+            result.sourceGeneration = input.sourceGeneration;
+            result.sourceSequence = input.sourceSequence;
+            result.presentationEpoch = input.presentationEpoch;
+            result.policyGeneration = input.policyGeneration;
+            result.continuityGeneration = input.continuityGeneration;
+            result.analysisDomain = input.analysisDomain; result.sourceFormat = input.sourceFormat;
+        }
+        else if (input.barInspectionCompleted)
+            result = {};
+        return result;
+    }
+
+    bool RevalidateSelectedPixelProtection(const SubmittedPixelProtection& previous,
+        const SubmittedPixelProtectionCommitInput& prepared,
+        const ActivePictureBounds& selectedBounds, ActivePictureBounds& replacement)
+    {
+        if (!previous.available || prepared.barInspectionCompleted || prepared.pixelProtected ||
+            !prepared.sourceGeneration || !prepared.sourceSequence || !previous.sourceSequence ||
+            previous.sourceGeneration != prepared.sourceGeneration ||
+            previous.sourceSequence > prepared.sourceSequence ||
+            previous.presentationEpoch != prepared.presentationEpoch ||
+            previous.policyGeneration != prepared.policyGeneration ||
+            previous.continuityGeneration != prepared.continuityGeneration ||
+            previous.analysisDomain != prepared.analysisDomain ||
+            previous.sourceFormat != prepared.sourceFormat ||
+            !SameTrustedCropContract(previous.base, prepared.base) ||
+            !ValidBounds(previous.bounds, prepared.base.rasterWidth, prepared.base.rasterHeight) ||
+            !ContainedBounds(previous.bounds, prepared.base) ||
+            !ValidBounds(selectedBounds, prepared.base.rasterWidth, prepared.base.rasterHeight) ||
+            ContainedBounds(selectedBounds, previous.bounds))
+            return false;
+        replacement = previous.bounds;
+        return true;
+    }
+
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
@@ -6353,12 +6415,25 @@ namespace AlphaSourceCrop
             ValidBounds(input.currentBarContentBounds,crop.rasterWidth,crop.rasterHeight);
         const bool contentOutsideNative = currentBarContent &&
             !ContainedBounds(anchor.crop,input.currentBarContentBounds);
+        const auto& submitted = input.submittedPixelProtection;
+        const bool protectSubmitted = !input.barInspectionCompleted && submitted.available &&
+            submitted.sourceGeneration == crop.frameSourceGeneration &&
+            submitted.sourceSequence != 0 && submitted.sourceSequence <= crop.frameSourceSequence &&
+            submitted.presentationEpoch == input.presentationEpoch &&
+            submitted.policyGeneration == input.policyGeneration &&
+            submitted.continuityGeneration == input.continuityGeneration &&
+            submitted.analysisDomain == input.analysisDomain && submitted.sourceFormat == input.sourceFormat &&
+            SameTrustedCropContract(submitted.base,anchor.crop) &&
+            ValidBounds(submitted.bounds,crop.rasterWidth,crop.rasterHeight) &&
+            ContainedBounds(submitted.bounds,anchor.crop);
         result.currentBarContentProtected = contentOutsideNative;
+        result.retainedPixelProtection = protectSubmitted;
         const bool proposedContainsContent = !proposed.applyCrop ||
             (ValidBounds(proposed.sourceBounds,crop.rasterWidth,crop.rasterHeight) &&
-             ContainedBounds(proposed.sourceBounds,input.currentBarContentBounds));
+             (!contentOutsideNative || ContainedBounds(proposed.sourceBounds,input.currentBarContentBounds)) &&
+             (!protectSubmitted || ContainedBounds(proposed.sourceBounds,submitted.bounds)));
         if (HasConfirmedPresentationCandidate(input, proposed) &&
-            (!contentOutsideNative || proposedContainsContent))
+            (!(contentOutsideNative || protectSubmitted) || proposedContainsContent))
         {
             if(HasCurrentConfirmedOutwardCandidate(input,proposed))
                 result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
@@ -6422,7 +6497,7 @@ namespace AlphaSourceCrop
             !crop.movingPictureTransition && !crop.pictureTransitionHandoff.active;
         if (proposed.applyCrop && ValidBounds(proposed.sourceBounds, crop.rasterWidth, crop.rasterHeight) &&
             !SameBounds(proposed.sourceBounds, raster) && !retainSubmittedEnvelope && !retainedSamplingExtent &&
-            !unconfirmedVerticalFit && (!contentOutsideNative || proposedContainsContent))
+            !unconfirmedVerticalFit && (!(contentOutsideNative || protectSubmitted) || proposedContainsContent))
             return result;
         auto bounds = anchor.crop;
         auto include = [&](const ActivePictureBounds& extent) {
@@ -6435,7 +6510,8 @@ namespace AlphaSourceCrop
         };
         // Retain only an envelope that actually reached the display. A late or
         // repeated analysis result cannot replace it or narrow it speculatively.
-        if (anchor.submittedEnvelopeAvailable &&
+        if ((!input.barInspectionCompleted || !input.submittedPixelProtection.available) &&
+            anchor.submittedEnvelopeAvailable &&
             anchor.submittedEnvelopeSourceSequence >= anchor.lastSubmittedSourceSequence &&
             anchor.submittedEnvelopeSourceSequence <= crop.frameSourceSequence &&
             ValidBounds(anchor.submittedEnvelope, crop.rasterWidth, crop.rasterHeight) &&
@@ -6448,6 +6524,11 @@ namespace AlphaSourceCrop
         if (contentOutsideNative) {
             include(input.currentBarContentBounds);
             result.currentPixelExtent = true;
+        }
+        // A selected current frame uses a previously submitted safe view while
+        // its own dense inspection is unavailable. This retains geometry only.
+        if (protectSubmitted) {
+            include(submitted.bounds);
         }
 
         // Current visible samples remain acquisition/inspection evidence.
