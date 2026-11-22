@@ -1031,7 +1031,7 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
     for (int row=reference-inward; row!=y-inward; row-=inward) {
         AnalysisLumaSample next;
         if (!samples.Sample(x,row,next)) return false;
-        if (next.luma <= matte+1) {
+        if (next.luma <= matte+4) {
             const int distanceToEdge = (boundary-row)*inward;
             // A single neutral matte-level notch in the immediate edge may
             // be a codec lobe, but needs independent same-frame neighbors.
@@ -1314,7 +1314,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 	result.lumaCutoff = matte >= 0 ? matte + 4 : blackThreshold + 8;
 	result.depthSamples = depthSamples;
 	int previousOccupied = -2;
-    std::bitset<kVisibleExtentLineSamples> previousColumns, previousStrong, previousResidual, previousShoulder;
+    std::bitset<kVisibleExtentLineSamples> previousColumns, previousStrong, previousResidual, previousShoulder, previousAttached;
     int previousOffset = 0;
 	ActivePictureVisibleExtentDiagnostic previousLine;
 	for (int d = 0; d < depthSamples; ++d)
@@ -1401,6 +1401,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         const int offset = suppressedShelf && nearRaisedEdge ? shelf.DistributedOffset(pairedEdge) : 0;
         const auto residual = shelf.Residual(columns, offset, attachedStroke);
         const auto agreement = residual & previousResidual;
+        const auto attachedAgreement = attachedStroke & previousAttached;
         const bool onlyShelf = d == previousOccupied + 1 && !disconnected && offset && previousOffset &&
             !(agreement & (agreement >> 1)).any() && !(strong & previousStrong).any();
         // Every connected pair in one of these immediate rows must be
@@ -1437,6 +1438,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         previousStrong = strong;
         previousOffset = offset;
         previousResidual = residual;
+        previousAttached = attachedStroke;
         if (d != previousOccupied + 1 || disconnected || onlyShelf || onlyShoulder)
 		{
 			previousLine = line;
@@ -1457,6 +1459,37 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		result.sampleStep = sampleStep;
 		result.depthSamples = depthSamples;
 		result.lumaCutoff = matte >= 0 ? matte + 4 : blackThreshold + 8;
+        // Established crops must preserve an attached weak stroke as well as
+        // initial acquisition does. Promote only a two-column, two-depth
+        // witness whose adjacent native pixels independently match the stroke;
+        // a sparse coarse bound alone does not gain native authority.
+        if (pairedEdge && (attachedAgreement & (attachedAgreement >> 1)).any()) {
+            for (int i=0;i+1<kVisibleExtentLineSamples;++i) {
+                if (!attachedAgreement.test(i) || !attachedAgreement.test(i+1)) continue;
+                bool native=true;
+                for (int column : {i,i+1}) {
+                    const int px=((column*2+1)*samples.source.width)/(kVisibleExtentLineSamples*2);
+                    for (int row : {previousLine.firstLine,y}) {
+                        for (int dx=0;dx<2;++dx) {
+                            AnalysisLumaSample v;
+                            if (px+dx>=samples.source.width || !samples.Sample(px+dx,row,v) ||
+                                v.luma<=matte+4 || v.luma>matte+8 ||
+                                std::abs(int(v.chromaU)-512)>32 || std::abs(int(v.chromaV)-512)>32) {
+                                native=false; break;
+                            }
+                        }
+                        if (!native) break;
+                    }
+                    if (!native) break;
+                }
+                if (native) {
+                    result.nativePixelDetail=true;
+                    result.nativePixelX=((i*2+1)*samples.source.width)/(kVisibleExtentLineSamples*2);
+                    result.nativePixelY=previousLine.firstLine;
+                    break;
+                }
+            }
+        }
 		result.available = true;
 		result.coordinate = top ? std::max(0, extentDepth - sampleStep) :
 			std::min(samples.source.height,
