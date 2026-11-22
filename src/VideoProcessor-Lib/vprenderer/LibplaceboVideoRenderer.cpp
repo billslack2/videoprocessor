@@ -18041,7 +18041,7 @@ releaseDriftBaseRetention =
             // commit rechecks the native base and actual submitted bounds.
             admissionDecision.presentation.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
             admissionDecision.state.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
-            if(unknownCaptionHold.retained) {
+            if(unknownCaptionHold.retained && !uncertainPicture.currentBarContentProtected) {
                 admissionDecision.state=cropPresentationAdmission;
                 admissionDecision.state.confirmedFitOwnership={};
                 admissionDecision.blocked=false;
@@ -18057,6 +18057,7 @@ releaseDriftBaseRetention =
                 episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
                 &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
                 queuedAnalysisDomainKey);
+            const bool preserveCurrentPixels = protectNativeMatteDetail || uncertainPicture.currentBarContentProtected;
             temporalPolicyMatteMargin = protectNativeMatteDetail && admissionDecision.presentation.raisedMatteMargin;
             if (temporalPolicyMatteMargin) {
                 temporalPolicyMatteBase = cropInput.geometry;
@@ -18241,7 +18242,7 @@ releaseDriftBaseRetention =
 					nlsRule.maximumStretchRatio,
 					nlsRule.vpRendererMaximumCropPercent,
 					nlsRule.vpRendererCropPreference,
-					protectNativeMatteDetail || cropDecision.verticallyTranslated ||
+					preserveCurrentPixels || cropDecision.verticallyTranslated ||
 						cropDecision.confirmedFitOwnership.available);
 			}
 			const NlsMappingDecision nlsCandidateDecision = EvaluateNlsMapping(
@@ -18312,7 +18313,7 @@ releaseDriftBaseRetention =
                 movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
                 pictureTransitionHandoff.active;
             AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill =
-                protectNativeMatteDetail ? AlphaSourceCrop::AspectLimitFillDecision{} :
+                preserveCurrentPixels ? AlphaSourceCrop::AspectLimitFillDecision{} :
                 AlphaSourceCrop::EvaluateFinalAspectLimitFill(finalFillInput);
             AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
             captionHoldInput.previous = captionConfirmationHold;
@@ -18360,7 +18361,7 @@ releaseDriftBaseRetention =
             captionHoldInput.targetTranslationPixels = verticalTranslationConfirmationPending
                 ? (pendingCaptionTarget < 0 ? -pendingCaptionMagnitude : pendingCaptionMagnitude)
                 : establishedTranslation.engageTargetTranslationPixels;
-            captionHoldInput.eligible = !protectNativeMatteDetail && captionAnchorContextMatches &&
+            captionHoldInput.eligible = !preserveCurrentPixels && captionAnchorContextMatches &&
                 !cropDecision.applyCrop && !aspectLimitFill.applied &&
                 cropInput.automaticCropEnabled && configuredScreenActive &&
                 episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
