@@ -292,6 +292,10 @@ TEST_CLASS(MotionRendererTests){public:
                 source.field=source.first_field=PL_FIELD_TOP;
                 params.deinterlace_params=&deinterlace;
             } else params.deinterlace_params=nullptr;
+            // This case renders each processed source below with pl_render_image.
+            // Match its no-mixer contract during preparation; the complete-packet
+            // mix contract has its own cache-signature test above.
+            params.frame_mixer=nullptr;
             const bool temporal=scenario!=0;
             SubtitleGeneratedGrayStyle style;
             auto request=std::make_shared<SubtitlePipelinePreparationRequest>(source,params,temporal,style,3,&g.output);
