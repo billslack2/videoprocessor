@@ -65,12 +65,9 @@ The qualified path combines structured current picture and competing unpaired
 boundary evidence; uncertainty on an edge remains explicit. No aspect snapping,
 old pixel reuse, subtitle certificates or extra confirmation delay is introduced.
 
-An isolated trial can opt in using vp-ar-trial.mode beside VideoProcessor.exe.
-Its content is active, shadow or off. Explicit VP_AR_EXPERIMENT overrides it;
-Control launchers must set off, rather than clear the variable. Ordinary
-installations have no marker and remain off. Startup AR-EXPERIMENT records
-identify mode and provenance, and the file is resolved beside the host EXE,
-never from the working directory. Resolution is startup-only, not per frame.
+The detector is active on ordinary startup. Set `VP_AR_EXPERIMENT=off`
+for a legacy control run or `VP_AR_EXPERIMENT=shadow` for a diagnostic
+comparison. Startup AR-EXPERIMENT records identify the selected mode.
 
 ## Current spatial expansion increment - 2026-11-18
 

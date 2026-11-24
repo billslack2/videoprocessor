@@ -7,7 +7,7 @@ using namespace ExperimentalAspect;
 #include "test_experimental_aspect_oscillation.h"
 int main(){
  int failures=0;auto check=[&](bool b,const char*s){std::printf("%s %s\n",b?"PASS":"FAIL",s);if(!b)++failures;};
- SetEnvironmentVariableA("VP_AR_EXPERIMENT","active");
+ SetEnvironmentVariableA("VP_AR_EXPERIMENT",nullptr);
  auto pixels=std::make_shared<std::vector<uint16_t>>(1280*720*3/2,512<<6);
  for(int y=0;y<720;++y)for(int x=0;x<1280;++x)(*pixels)[y*1280+x]=(y<91||y>=629?64:300)<<6;
  AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels->data());source.dataBytes=pixels->size()*2;

@@ -4917,11 +4917,6 @@ struct LibplaceboVideoRenderer::Impl
         return GetEnvironmentVariableA("VP_DIAG_PEAK_OFF_WITH_SUBTITLE_PANELS",value,sizeof(value))==1 &&
             value[0]=='1';
     }();
-    const bool compactPeakEnabled = [] {
-        char value[2]{};
-        return GetEnvironmentVariableA("VP_DIAG_COMPACT_HDR_PEAK",value,sizeof(value))==1 &&
-            value[0]=='1';
-    }();
     using CompactPeakWorker = OptionalAnalysisWorker<CompactHdrPeak::Measurement,1>;
     CompactPeakWorker compactPeakWorker;
     std::shared_ptr<CompactPeakWorker::Slot> compactPeakPending;
@@ -15801,7 +15796,6 @@ struct LibplaceboVideoRenderer::Impl
             subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
                 subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         CompactHdrPeak::Decision sourcePeak;
-        if (compactPeakEnabled)
         {
             const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params &&
                 image.color.transfer==PL_COLOR_TRC_PQ;
