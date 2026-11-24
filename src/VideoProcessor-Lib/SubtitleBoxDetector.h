@@ -119,7 +119,8 @@ public:
     };
     Diagnostics TakeDiagnostics() {auto out=m_diagnostics;m_diagnostics={};return out;}
     SubtitleBoxResult Analyze(const AnalysisLumaSource& source, int pictureTop,
-        int pictureBottom, uint64_t sequence, uint64_t viewportGeneration);
+        int pictureBottom, uint64_t sequence, uint64_t viewportGeneration,
+        bool discardedBottomOnly = false);
     void Reset();
     void SetScriptHint(SubtitleScriptHint hint) {
         if(hint==SubtitleScriptHint::GeneralMixed)hint=SubtitleScriptHint::Latin;
@@ -145,7 +146,9 @@ private:
         bool actualBarInk = false;
     };
     bool Detect(const AnalysisLumaSource& source, int pictureTop, int pictureBottom,
-        SubtitleBoxRect& box, int& lines, std::array<uint64_t, 16>& signature, int nearBarDistance);
+        SubtitleBoxRect& box, int& lines, std::array<uint64_t, 16>& signature, int nearBarDistance, const SubtitleBoxRect* discardedCard);
+    SubtitleBoxRect m_discardedCard;
+    std::vector<uint32_t> m_discardedSamples, m_currentDiscardedSamples;
     // Immutable raw grid for this Analyze call only. Detector scratch remains separate.
     int m_optimizationMode=0;
     SubtitleScriptHint m_scriptHint=SubtitleScriptHint::Latin;
@@ -176,7 +179,7 @@ private:
     uint64_t m_generation = 0, m_viewport = 0, m_sequence = 0, m_nextCue = 0;
     int m_width = 0, m_height = 0, m_top = 0, m_bottom = 0, m_misses = 0;
     int m_nearBarDistance=0;
-    bool m_workLimit = false, m_hasSequence = false;
+    bool m_workLimit = false, m_hasSequence = false, m_discardedBottomOnly = false;
     bool m_topSearchComplete=false,m_bottomSearchComplete=false;
     bool m_nearBarEligibilityMeasured=false,m_nearBarEligible=false;
     const char* m_diagnosticReason="not-analyzed";

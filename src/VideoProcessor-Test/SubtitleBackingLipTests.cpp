@@ -1014,6 +1014,75 @@ public:
             }
         }
     }
+    TEST_METHOD(CurrentPhysicalEdgeClippingKeepsBackingAcrossTwoRowObservationJitter) {
+        for(bool top:{false,true}) {
+            Frame frame(6,Format::P210,top,0);frame.SingleLineAtGap(10);frame.Lip(30,true);
+            auto cue=AcquireOnHeap(frame,20);
+            const auto geometry=Geometry(*cue);
+            SubtitleBackingLipContinuity state;
+            const auto first=state.Consume(frame.Source(),cue->preview,cue->accepted,
+                Identity(2),7,8,65536,&geometry);
+            AssertCurrentCleanupRows(first,frame);
+
+            auto expanded=cue->preview;
+            auto& current=expanded.current;
+            if(top)current.pictureTop-=2;
+            else current.pictureBottom+=2;
+            auto expandedGeometry=geometry;
+            expandedGeometry.pictureTop=current.pictureTop;
+            expandedGeometry.pictureBottom=current.pictureBottom;
+            current.sharedNativeGeometry=true;
+            current.sharedNativePhysicalSupport=true;
+            current.glyphLocalVerifiedBounds=current.text.bounds;
+            current.glyphSupportPolicy=current.policyGeneration;
+            current.glyphSupportContinuity=current.continuityGeneration;
+            current.glyphSupportTop=current.pictureTop;
+            current.glyphSupportBottom=current.pictureBottom;
+            auto& shared=current.sharedPicture;
+            shared.required=true;
+            shared.bounds.left=0;shared.bounds.right=frame.width;
+            shared.bounds.top=current.pictureTop;shared.bounds.bottom=current.pictureBottom;
+            shared.bounds.rasterWidth=frame.width;shared.bounds.rasterHeight=frame.height;
+            const auto bindIdentity=[&](uint64_t sequence) {
+                current.identity=Identity(sequence);
+                shared.identity=current.glyphSupportIdentity=current.identity;
+            };
+            bindIdentity(3);
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(current));
+            const auto sameCue=state.Consume(frame.Source(),expanded,cue->accepted,
+                Identity(3),7,8,65536,&expandedGeometry);
+            LogProof(sameCue,frame,"current-physical-edge-clips-expanded-observation");
+            AssertCurrentCleanupRows(sameCue,frame);
+            Assert::IsTrue(sameCue.revalidatedOutline && sameCue.outlineBaseAnchored);
+            Assert::IsTrue(Same(first.cleanup,sameCue.cleanup));
+
+            // The measured picture is unchanged. The two transition rows are
+            // dimmer than picture but brighter than the black-body threshold.
+            // Alternate exact-plane and wider shared observations, as in live playback.
+            frame.Fill({0,frame.pictureBottom,frame.width,frame.pictureBottom+1},12);
+            frame.Fill({0,frame.pictureBottom+1,frame.width,frame.pictureBottom+2},8);
+            for(uint64_t sequence=4;sequence<10;++sequence) {
+                bindIdentity(sequence);
+                auto exact=cue->preview;
+                exact.current.identity=Identity(sequence);
+                const auto& observation=sequence%2?expanded:exact;
+                const auto& composition=sequence%2?expandedGeometry:geometry;
+                const auto proof=state.Consume(frame.Source(),observation,cue->accepted,
+                    Identity(sequence),7,8,65536,&composition);
+                LogProof(proof,frame,"dim-edge-jitter-current-outline");
+                AssertCurrentCleanupRows(proof,frame);
+                Assert::IsTrue(proof.revalidatedOutline && Same(first.cleanup,proof.cleanup));
+            }
+
+            // A real extension of active picture still contradicts the outline.
+            frame.Fill({0,frame.pictureBottom,frame.width,frame.pictureBottom+2},300);
+            bindIdentity(10);
+            const auto changed=ProveCurrentSubtitleBackingLip(frame.Source(),expanded,cue->accepted,
+                Identity(10),7,8,65536,&sameCue,&expandedGeometry);
+            Assert::IsFalse(changed.valid);
+            Assert::AreEqual("lip-outline-edge-expansion-not-bar",changed.reason);
+        }
+    }
     TEST_METHOD(RememberedLipUsesStableCompositionWhenEdgeJitterEntersEncodedBar) {
         // The source's active picture ends at row 1774. A later boundary
         // estimate at 1778 would make a cold bottom scan start on row 1777,
@@ -1846,6 +1915,64 @@ public:
                     Assert::IsTrue(top?expected.top>=glyph.bottom:expected.bottom<=glyph.top,
                         L"Glyph-free backing restoration cannot erase original subtitle glyphs");
                 }
+            }
+        }
+    }
+    TEST_METHOD(OptionalNativeBenHurTransitionRowsKeepRoundedBackingCleanup) {
+        char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_BENHUR_TRANSITION_REPLAY");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()) {Logger::WriteMessage("Ben-Hur transition replay not requested");return;}
+        std::ifstream data(path,std::ios::binary),metadata(path+".txt");
+        Assert::IsTrue(bool(data) && bool(metadata));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(data)),{});
+        AnalysisLumaSource source;int format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+        metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>color>>top>>bottom>>script>>range;
+        source.data=bytes.data();source.dataBytes=bytes.size();source.generation=2;
+        source.format=static_cast<AnalysisLumaFormat>(format);source.encoding=static_cast<VideoFrameEncoding>(encoding);
+        source.colorspace=static_cast<ColorSpace>(color);source.range=static_cast<AnalysisLumaRange>(range);
+        Assert::IsTrue(source.IsValid());
+        SubtitlePictureAuthority authority;
+        authority.required=true;
+        authority.bounds.left=0;authority.bounds.right=source.width;
+        authority.bounds.top=top;authority.bounds.bottom=bottom;
+        authority.bounds.rasterWidth=source.width;authority.bounds.rasterHeight=source.height;
+        auto continuity=std::make_unique<SubtitleBackingLipContinuity>();
+        for(uint64_t sequence:{2,3}) {
+            auto scanner=std::make_unique<SubtitleBoxDetector>();scanner->SetNearBarDistance(20);
+            authority.identity=Identity(sequence);
+            auto observation=std::make_unique<SubtitleBoxObservation>(SubtitleBoxLookahead::Measure(
+                *scanner,source,ExtractActivePictureEvidence(source),authority.identity,false,{},7,8,authority));
+            auto preview=ResolveOnHeap(observation.get(),1);
+            auto accepted=preview->current.text;accepted.cue=1;
+            Assert::IsTrue(accepted.detected && preview->current.glyphLocalBottom);
+            SubtitleCutPasteGeometry geometry;geometry.valid=true;
+            geometry.pictureTop=top;geometry.pictureBottom=bottom;
+            const auto proof=continuity->Consume(source,*preview,accepted,authority.identity,7,8,65536,&geometry);
+            Logger::WriteMessage(proof.reason);
+            Assert::IsTrue(proof.valid);
+            Assert::AreEqual(1776,proof.pictureBottom);
+            Assert::AreEqual(1746,proof.cleanup.top);
+            Assert::AreEqual(30u,proof.cleanupRowCount);
+            Assert::IsTrue(proof.revalidatedOutline==(sequence==3));
+            for(unsigned i=0;i<proof.cleanupRowCount;++i) {
+                const auto row=proof.cleanupRows[i];
+                Assert::IsTrue(row.left>=1209 && row.right<=2631 && row.bottom<=1776);
+            }
+            const auto applied=ApplyCurrentSubtitleBackingLip(geometry,proof,authority.identity,7,8);
+            Assert::AreEqual(30u,applied.generatedCleanupRowCount);
+            AssertGeometryExceptCleanup(geometry,applied);
+            if(sequence==3) {
+                // Removing one picture flank's independent support must
+                // block the clipped seam path even with the same glyphs.
+                for(int y:{1774,1775}) {
+                    const auto offset=size_t(y)*source.rowBytes;
+                    std::fill(bytes.begin()+offset+size_t(2640)*2,
+                        bytes.begin()+offset+size_t(source.width)*2,uint8_t(0));
+                }
+                const auto unsupported=ProveCurrentSubtitleBackingLip(
+                    source,*preview,accepted,authority.identity,7,8,65536,nullptr,&geometry);
+                Assert::IsFalse(unsupported.valid);
+                Assert::AreEqual("lip-attachment-seam-unbounded",unsupported.reason);
             }
         }
     }

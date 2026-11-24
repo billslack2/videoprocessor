@@ -373,9 +373,9 @@ namespace AlphaSourceCrop
             // established hold, but never count darkness/ambiguity as settled bars.
             // Fresh full authority and unrelated owners were handled above.
             state.quietSamples = 0;
-            state.directionalChanges = 0;
             if (state.active || state.awaitingPublication)
             {
+                state.directionalChanges = 0;
                 if (state.active && state.subtitleAssistedBars && adjacent)
                     state.missedActiveBarSamples = static_cast<uint32_t>((std::min)(
                         uint64_t(state.missedActiveBarSamples) + 1,
@@ -388,6 +388,8 @@ namespace AlphaSourceCrop
             if (adjacent && state.subtitleAssistedBars &&
                 ValidVerticalBarPicture(state.last) && state.missingBarProofSamples < 2)
             {
+                if (!previous.onsetPending && previous.missingBarProofSamples == 0)
+                    state.directionalChanges = 0;
                 ++state.missingBarProofSamples;
                 return state;
             }
@@ -405,12 +407,20 @@ namespace AlphaSourceCrop
             const int maxTravel = scanStep * static_cast<int>(state.missingBarProofSamples + 1);
             const int topTravel = state.last.top - candidate.top;
             const int bottomTravel = candidate.bottom - state.last.bottom;
-            if (topTravel < 0 || bottomTravel < 0 ||
-                topTravel > maxTravel || bottomTravel > maxTravel)
+            const bool boundedTravel = topTravel >= 0 && bottomTravel >= 0 &&
+                topTravel <= maxTravel && bottomTravel <= maxTravel;
+            if (!boundedTravel)
                 state.anchor = candidate; // A cut/reversal hidden in the gap is a new seed.
+            // Renew deferred publication only from fresh, opposing motion.
+            // Missing frames supplied no votes. A stationary return or a
+            // one-sided edge change must take the ordinary confirmation path.
+            state.onsetPending = state.directionalChanges != 0 && nativePosition &&
+                boundedTravel && topTravel > 0 && bottomTravel > 0;
+            if (!state.onsetPending)
+                state.directionalChanges = 0;
             state.last = state.quietAnchor = candidate;
             state.missingBarProofSamples = 0;
-            state.directionalChanges = state.quietSamples = 0;
+            state.quietSamples = 0;
             return state;
         }
         state.missingBarProofSamples = 0;

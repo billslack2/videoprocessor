@@ -5744,6 +5744,68 @@ public:
         Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
         Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentPicture(a,b.sharedPicture));
     }
+    TEST_METHOD(NativeHeldCropBottomInspectionFindsCurrentCaption) {
+        char* value=nullptr;size_t size=0;
+        _dupenv_s(&value,&size,"VP_SUBTITLE_HELD_CROP_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()) {Logger::WriteMessage(L"Held crop replay skipped: VP_SUBTITLE_HELD_CROP_REPLAY_PATH is absent.");return;}
+        std::ifstream input(path,std::ios::binary);
+        Assert::IsTrue(bool(input));
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)),{});
+        AnalysisLumaSource source;source.data=bytes.data();source.dataBytes=bytes.size();
+        source.width=3840;source.height=2160;source.rowBytes=source.chromaRowBytes=7680;
+        source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+        source.encoding=VideoFrameEncoding::BGRA_8BIT;source.colorspace=ColorSpace::BT_2020;
+        source.range=AnalysisLumaRange::Full;source.generation=1;
+        Assert::IsTrue(source.IsValid());
+        auto key=Cue(92851);key.width=source.width;key.height=source.height;
+        key.identity.transportGeneration=1;key.identity.analysisDomainKey=1;key.nearBarDistance=20;
+        key.policyGeneration=2;key.continuityGeneration=4;
+        key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+        const ActivePictureBounds held{0,272,3840,1888,3840,2160,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        auto& candidate=key.sharedPicture.inspectionCandidate;
+        candidate=NominateSubtitleInspectionCandidate(source,held,1,key.identity.sourceFormatGeneration,
+            ActivePictureAuthorityOrigin::NATIVE,ActivePictureClassification::BAR_CROP_TRUSTED,
+            1,key.identity,key.policyGeneration,key.continuityGeneration,true,false);
+        Assert::IsTrue(candidate.valid);
+        candidate.discardedBottomOnly=true;
+        SubtitleMeasurementSampler sampler;
+        const auto result=sampler.Measure(source,key,{},24);
+        const auto reason=std::string(result.text.diagnosticReason)+" / "+result.glyphLocalProofReason;
+        Logger::WriteMessage(reason.c_str());
+        Assert::IsTrue(result.text.detected && result.text.lineCount==1,
+            std::wstring(reason.begin(),reason.end()).c_str());
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(result));
+        Assert::IsTrue(result.inspectionCandidateUsed && result.glyphLocalBottom);
+        Assert::IsTrue(result.glyphLocalVerifiedBounds.top>=held.bottom);
+        Assert::IsFalse(result.subtitleArProof.accepted || result.sharedNativePhysicalSupport);
+        auto preview=SubtitleBoxLookahead::Resolve(&result,1,key.policyGeneration,key.continuityGeneration);
+        SubtitleBoxPresentation presentation;
+        const auto accepted=presentation.Consume(preview,250,41.667);
+        Assert::IsTrue(accepted.detected);
+        SubtitleCutPastePresentation compositor;
+        const auto relocated=compositor.Consume(accepted,preview,{},20);
+        Assert::IsTrue(relocated.valid && relocated.destination.bottom<=held.bottom);
+        auto next=key;
+        ++next.identity.acceptedSequence;
+        ++next.identity.sourceFrameNumber;
+        ++next.identity.captureTimestamp;
+        next.sharedPicture.identity=next.identity;
+        sampler.TakeDetectorDiagnostics();
+        const auto verifiedReuse=sampler.Measure(source,next,{},24);
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(verifiedReuse));
+        Assert::IsTrue(SameAnalysisFrameIdentity(next.identity,verifiedReuse.glyphSupportIdentity));
+        Assert::AreEqual(uint64_t(0),sampler.TakeDetectorDiagnostics().detectPasses);
+        // The immediately preceding recorded input carries the same moving
+        // picture but has no card. It cannot replay the cached subtitle.
+        std::ifstream before(path.substr(0,path.size()-10)+"000040.bin",std::ios::binary);
+        Assert::IsTrue(bool(before.read(reinterpret_cast<char*>(bytes.data()),bytes.size())));
+        ++next.identity.acceptedSequence;
+        next.sharedPicture.identity=next.identity;
+        const auto absent=sampler.Measure(source,next,{},24);
+        Assert::IsFalse(absent.text.detected || absent.text.held || absent.subtitleArProof.accepted);
+    }
+
     TEST_METHOD(NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_PAUSED_REPLAY_PATH");
         const std::string path=value?value:"";std::free(value);

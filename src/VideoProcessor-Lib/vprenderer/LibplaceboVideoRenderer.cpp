@@ -14205,12 +14205,33 @@ struct LibplaceboVideoRenderer::Impl
                 nlsGeometryGeneration,subtitlePixelIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                 subtitleMeasurementEnabled && automaticSourceCrop && configuredScreenActive && trustedNlsBarGeometry,
                 inspectionRecoveryBlocked || inwardCaptionProtected || currentFullRaster || nlsRequested || fixedCropAspectConfigured);
+            // Once the native bars have opened, the motion hold can still
+            // discard a newly arriving caption. Its base is only a search
+            // boundary. The worker must verify the current glyphs independently.
+            if (subtitleCutPasteTest && !temporalRenderer.Active() && automaticSourceCrop &&
+                configuredScreenActive && inspectionRecoveryBlocked && !inwardCaptionProtected &&
+                !nlsRequested && !fixedCropAspectConfigured &&
+                movingPictureTransition.identity.viewportGeneration==viewportRequestSerial)
+            {
+                auto heldCrop = NominateSubtitleInspectionCandidate(analysisSource,
+                    movingPictureTransition.base,frameGeneration,subtitlePixelIdentity.sourceFormatGeneration,
+                    ActivePictureAuthorityOrigin::NATIVE,ActivePictureClassification::BAR_CROP_TRUSTED,
+                    viewportRequestSerial+1,subtitlePixelIdentity,localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,true,false);
+                if (heldCrop.valid)
+                {
+                    heldCrop.discardedBottomOnly=true;
+                    subtitleSharedPicture.inspectionCandidate=heldCrop;
+                }
+            }
             if(subtitleSharedPicture.inspectionCandidate.valid && sourceSequence%120==0)
                 DebugLog::Log("SUBTITLE INSPECTION CANDIDATE: frame=%llu revision=%llu origin=%llu bounds=%d-%d shared_available=0 policy=%llu continuity=%llu domain=%llu viewport=%llu",
                     sourceSequence,nlsGeometryGeneration,subtitleSharedPicture.inspectionCandidate.originIdentity.acceptedSequence,
                     nlsGeometry.top,nlsGeometry.bottom,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                     subtitlePixelIdentity.analysisDomainKey,subtitlePixelIdentity.viewportGeneration);
         }
+
+        const auto heldCaptionSearch = subtitleSharedPicture.inspectionCandidate;
 
 		if (retiringTranslationFitInspection)
 		{
@@ -15210,7 +15231,9 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitlePaddingPolicy.glyphRelative?&displayBounds:nullptr,cueContinuation);
                 // Final placement must fit the AR owner's picture, not an
                 // independently sampled subtitle bar edge (which can differ by pixels).
-                const SubtitleBoxRect visiblePicture = configuredScreenActive && nlsGeometryAvailable &&
+                const SubtitleBoxRect visiblePicture = heldCaptionSearch.discardedBottomOnly
+                    ? SubtitleBoxRect{0,heldCaptionSearch.bounds.top,width,heldCaptionSearch.bounds.bottom}
+                    : configuredScreenActive && nlsGeometryAvailable &&
                     nlsGeometrySourceGeneration == frameGeneration
                     ? SubtitleBoxRect{nlsGeometry.left,nlsGeometry.top,nlsGeometry.right,nlsGeometry.bottom}
                     : SubtitleBoxRect{0,detectedMove.pictureTop,width,detectedMove.pictureBottom};
@@ -16277,9 +16300,10 @@ struct LibplaceboVideoRenderer::Impl
         const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
         AutoPictureAlignment::ActivePicture alignmentPicture{};
+        bool heldCaptionCropAdmitted = false;
 		auto configureViewport =
 			[this, &alignmentPicture, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
+             &heldCaptionCropAdmitted, viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
 			 subtitlePreviewMode,
@@ -16328,6 +16352,7 @@ struct LibplaceboVideoRenderer::Impl
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
 			source = subtitleComposedImage;
+            heldCaptionCropAdmitted = false;
             temporalPolicyNearBlackEnvelopeCandidate = false;
             temporalPolicyNearBlackEnvelopeFailOpen = false;
             temporalPolicyNearBlackEnvelopeBase = {};
@@ -18291,6 +18316,8 @@ releaseDriftBaseRetention =
 			cropAdmissionPreviouslyBlocked = admissionDecision.blocked;
 			cropPresentationAdmission = admissionDecision.state;
 			cropDecision = admissionDecision.presentation;
+            heldCaptionCropAdmitted = !admissionDecision.blocked && cropDecision.applyCrop &&
+                cropDecision.owner == AlphaSourceCrop::DecisionOwner::MOVING_PICTURE_HOLD;
             // Readiness observes an admitted pose, never an unowned FIT proposal.
             // It cannot grant crop authority or change ordinary playback policy.
             temporalPolicyStartupPoseQualified = !admissionDecision.blocked &&
@@ -19885,6 +19912,26 @@ releaseDriftBaseRetention =
         } else {
             configureViewport(renderImage,target,configuredScreenActive,
                 subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
+        }
+        if (heldCaptionSearch.discardedBottomOnly && subtitleCompositionSucceeded)
+        {
+            // A late viewport decision can release the hold. In that case the
+            // input already carries the caption at its original location.
+            const auto& crop=renderImage.crop;
+            const auto& destination=relocatedSubtitle.destination;
+            const bool placed=heldCaptionCropAdmitted && relocatedSubtitle.content.Valid() &&
+                relocatedSubtitle.content.top>=crop.y1 && destination.Valid() &&
+                destination.left>=crop.x0 && destination.top>=crop.y0 &&
+                destination.right<=crop.x1 && destination.bottom<=crop.y1;
+            if (!placed)
+            {
+                const auto finalCrop=renderImage.crop;
+                renderImage=image;
+                renderImage.crop=finalCrop;
+                subtitleCompositionSucceeded=false;
+            }
+            DEBUGLOG_ENHANCED("VP held-crop subtitle: source=%llu composed=%d held=%d",
+                sourceSequence,placed?1:0,heldCaptionCropAdmitted?1:0);
         }
         const auto unalignedTargetCrop=target.crop;
         const auto unalignedLinearFallbackCrop=linearFallbackCrop;
