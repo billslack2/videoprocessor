@@ -2001,10 +2001,29 @@ public:
             <<" native="<<second.pictureTop<<":"<<second.pictureBottom<<" composed=382:1778 cleanup="
             <<proof.cleanup.left<<","<<proof.cleanup.top<<"-"<<proof.cleanup.right<<","<<proof.cleanup.bottom;
         Logger::WriteMessage(report.str().c_str());Assert::IsTrue(proof.valid);
-        const SubtitleBoxRect independentlyMeasured{1492,1746,2348,1776};
-        Assert::IsTrue(Same(independentlyMeasured,proof.cleanup),L"Remove the complete rounded glyph-free backing measured from the paused native pixels");
+        const SubtitleBoxRect outer{1492,1746,2348,1776};
+        const SubtitleBoxRect common{1516,1746,2325,1776};
+        Assert::IsTrue(Same(outer,proof.measured) && Same(common,proof.cleanup));
         const auto output=ApplyCurrentSubtitleBackingLip(geometry,proof,Identity(2),7,8);
-        Assert::IsTrue(Same(independentlyMeasured,output.generatedCleanup));AssertGeometryExceptCleanup(geometry,output);
+        AssertGeometryExceptCleanup(geometry,output);
+        Assert::IsTrue(Same(common,output.generatedCleanup));
+        Assert::AreEqual(30u,output.generatedCleanupRowCount);
+        // Independently read the neutral-black run on each archived HDMI row.
+        // The common rectangle excludes shoulders; the row spans must cover them.
+        for(unsigned i=0;i<output.generatedCleanupRowCount;++i) {
+            const int y=outer.bottom-1-static_cast<int>(i);
+            const auto black=[&](int x) {
+                AnalysisLumaSample pixel;
+                Assert::IsTrue(source.Sample(x,y,pixel));
+                return pixel.luma<=4 && std::abs(int(pixel.chromaU)-512)<=32 &&
+                    std::abs(int(pixel.chromaV)-512)<=32;
+            };
+            int left=1920,right=1920;
+            while(left>0 && black(left-1))--left;
+            while(right<source.width && black(right))++right;
+            const SubtitleBoxRect expected{left,y,right,y+1};
+            Assert::IsTrue(Same(expected,output.generatedCleanupRows[i]),L"Clean the exact backed span and preserve both exterior corners.");
+        }
         for(int i=0;i<cue.accepted.lineCount;++i)Assert::IsTrue(proof.cleanup.bottom<=cue.accepted.lineBounds[i].top);
     }
     TEST_METHOD(VisibleLipProofRejectsInvalidGeometryAndWrongContext) {
