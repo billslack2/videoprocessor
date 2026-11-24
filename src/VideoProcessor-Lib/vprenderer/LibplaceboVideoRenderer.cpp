@@ -4921,6 +4921,7 @@ struct LibplaceboVideoRenderer::Impl
     CompactPeakWorker compactPeakWorker;
     std::shared_ptr<CompactPeakWorker::Slot> compactPeakPending;
     CompactHdrPeak::Measurement compactPeakLatest;
+    float compactPeakHlgMin=0.0f, compactPeakHlgMax=0.0f;
     SceneDetector compactPeakSceneDetector;
     uint64_t compactPeakGeneration=0, compactPeakFormat=0, compactPeakEpoch=0;
     uint64_t compactPeakContext=0, compactPeakRequestContext=0;
@@ -5819,19 +5820,26 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
     CompactHdrPeak::Measurement UpdateCompactPeak(const AnalysisLumaSource& pixels,
+        const pl_color_space& measurementColor,
         uint64_t generation, uint64_t format, uint64_t epoch, uint64_t source,
         bool eligible, bool sceneBoundary, const pl_hdr_metadata* sourceLuminance, bool temporal)
     {
         constexpr uint64_t analysisIntervalMs=200, maximumAgeMs=500;
         const uint64_t now=GetTickCount64();
+        const bool hlg=eligible && measurementColor.transfer==PL_COLOR_TRC_HLG;
+        const float hlgMin=hlg ? measurementColor.hdr.min_luma : 0.0f;
+        const float hlgMax=hlg ? measurementColor.hdr.max_luma : 0.0f;
         if (eligible!=compactPeakWasEligible || generation!=compactPeakGeneration ||
-            format!=compactPeakFormat || epoch!=compactPeakEpoch || (eligible && sceneBoundary))
+            format!=compactPeakFormat || epoch!=compactPeakEpoch || (eligible && sceneBoundary) ||
+            hlgMin!=compactPeakHlgMin || hlgMax!=compactPeakHlgMax)
         {
             ++compactPeakContext;
             compactPeakGeneration=generation;
             compactPeakFormat=format;
             compactPeakEpoch=epoch;
             compactPeakWasEligible=eligible;
+            compactPeakHlgMin=hlgMin;
+            compactPeakHlgMax=hlgMax;
             compactPeakLatest={};
             compactPeakLatestMs=compactPeakNextMs=0;
         }
@@ -5858,7 +5866,7 @@ struct LibplaceboVideoRenderer::Impl
             try {
                 auto slot=std::make_shared<CompactPeakWorker::Slot>();
                 if (compactPeakWorker.Submit(slot,generation,source,source,
-                    [pixels] { return CompactHdrPeak::Measure(pixels); }))
+                    [pixels,measurementColor] { return CompactHdrPeak::Measure(pixels,measurementColor); }))
                 {
                     compactPeakPending=std::move(slot);
                     compactPeakRequestContext=compactPeakContext;
@@ -15797,11 +15805,22 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         CompactHdrPeak::Decision sourcePeak;
         {
-            const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params &&
-                image.color.transfer==PL_COLOR_TRC_PQ;
-            const bool authored = alternate && CompactHdrPeak::HasSourceLuminance(image.color.hdr);
-            const bool measure = alternate && !CompactHdrPeak::HasAuthoredStatistics(image.color.hdr) &&
+            const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params;
+            const bool authored = alternate && image.color.transfer==PL_COLOR_TRC_PQ &&
+                CompactHdrPeak::HasSourceLuminance(image.color.hdr);
+            auto measurementColor=image.color;
+            bool measure=alternate && !CompactHdrPeak::HasAuthoredStatistics(image.color.hdr) &&
                 CompactHdrPeak::Supports(analysisSource,image);
+            if (measure && measurementColor.transfer==PL_COLOR_TRC_HLG) {
+                // Resolve the same transfer and luminance contract as the later
+                // presentation target, before the current source packet is sealed.
+                auto peakTarget=configuredOutputColor;
+                if (renderTargetTransfer!=PL_COLOR_TRC_UNKNOWN)
+                    peakTarget.transfer=renderTargetTransfer;
+                LibplaceboRenderParameters::ApplyTargetLuminance(
+                    sdrInput,static_cast<float>(sdrTargetNits),static_cast<float>(sdrBlackNits),peakTarget);
+                measure=CompactHdrPeak::InferHlgMeasurementColor(measurementColor,peakTarget);
+            }
             const auto format=AlphaSourceFormatKey(state);
             auto peakScene=sceneResult;
             if (measure && !cadenceRepeat && !sceneDetectionEnabled && !automaticSourceCrop)
@@ -15818,7 +15837,11 @@ struct LibplaceboVideoRenderer::Impl
                     state.displayMode->FrameDuration(),true,&analysisSource});
             }
             sourcePeak.replaceDetector=authored || measure;
-            sourcePeak.measurement=UpdateCompactPeak(analysisSource,frameGeneration,format,
+            if (measure && measurementColor.transfer==PL_COLOR_TRC_HLG) {
+                sourcePeak.hlgMin=measurementColor.hdr.min_luma;
+                sourcePeak.hlgMax=measurementColor.hdr.max_luma;
+            }
+            sourcePeak.measurement=UpdateCompactPeak(analysisSource,measurementColor,frameGeneration,format,
                 pictureProcessingEpoch,sourceSequence,measure,
                 videoFrame.IsSourceDiscontinuity() || peakScene.hardCutCandidate ||
                     peakScene.hardCutConfirmed || peakScene.nearBlackEntry || peakScene.safeBoundary,
@@ -20514,7 +20537,8 @@ releaseDriftBaseRetention =
                 lastPeakSweepPhase=peakSweepPhase;
             }
         }
-        const bool useDirectAlternatePeak=sourcePeak.replaceDetector && !temporalRenderer.Active();
+        const bool useDirectAlternatePeak=!temporalRenderer.Active() &&
+            CompactHdrPeak::ReplacesDetector(sourcePeak,renderImage.color,target.color);
         double drawWallMs=0.0;
         unsigned drawCalls=0;
         auto renderCallTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::RenderInvocation);
@@ -20538,7 +20562,7 @@ releaseDriftBaseRetention =
                 if (useDirectAlternatePeak) {
                     auto drawParams=parameters;
                     auto drawImage=source;
-                    CompactHdrPeak::Apply(sourcePeak,drawImage,drawParams);
+                    CompactHdrPeak::Apply(sourcePeak,drawImage,destination.color,drawParams);
                     drawn=temporalRenderer.Render(renderer,drawImage,destination,drawParams,pictureProcessingEpoch);
                 } else if (peakSweepPhase>=0) {
                     auto drawParams=parameters;

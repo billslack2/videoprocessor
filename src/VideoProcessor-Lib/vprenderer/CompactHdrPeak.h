@@ -18,20 +18,35 @@ namespace CompactHdrPeak
     {
         bool replaceDetector=false;
         Measurement measurement;
+        float hlgMin=0.0f, hlgMax=0.0f;
     };
 
-    inline bool IsFullRgb8(const AnalysisLumaSource& source)
+    struct RgbCodeRange
     {
-        return source.format==AnalysisLumaFormat::NativeRgb &&
-            source.range==AnalysisLumaRange::Full &&
-            (source.encoding==VideoFrameEncoding::BGRA_8BIT ||
-                source.encoding==VideoFrameEncoding::ARGB_8BIT);
-    }
+        int black=0, white=0;
+    };
 
-    inline bool IsLimitedR10l(const AnalysisLumaSource& source)
+    inline RgbCodeRange NativeRgbCodeRange(const AnalysisLumaSource& source)
     {
-        return source.format==AnalysisLumaFormat::NativeRgb &&
-            source.range==AnalysisLumaRange::Limited && source.encoding==VideoFrameEncoding::R10l;
+        if (source.format!=AnalysisLumaFormat::NativeRgb) return {};
+        switch (source.encoding)
+        {
+        case VideoFrameEncoding::BGRA_8BIT:
+        case VideoFrameEncoding::ARGB_8BIT:
+            return source.range==AnalysisLumaRange::Full ? RgbCodeRange{0,255} : RgbCodeRange{};
+        case VideoFrameEncoding::R12B:
+        case VideoFrameEncoding::R12L:
+            // The existing native readers normalize packed 12-bit RGB to
+            // the same full 10-bit code domain as the renderer's formatter.
+            return source.range==AnalysisLumaRange::Full ? RgbCodeRange{0,1023} : RgbCodeRange{};
+        case VideoFrameEncoding::R210:
+            return source.range==AnalysisLumaRange::Limited ? RgbCodeRange{64,960} : RgbCodeRange{};
+        case VideoFrameEncoding::R10b:
+        case VideoFrameEncoding::R10l:
+            return source.range==AnalysisLumaRange::Limited ? RgbCodeRange{64,940} : RgbCodeRange{};
+        default:
+            return {};
+        }
     }
 
     inline bool IsLimitedBt2020Yuv(const AnalysisLumaSource& source)
@@ -45,14 +60,40 @@ namespace CompactHdrPeak
 
     inline bool Supports(const AnalysisLumaSource& source, const pl_frame& frame)
     {
-        if (!source.backingOwner || frame.color.transfer!=PL_COLOR_TRC_PQ ||
-            frame.color.primaries!=PL_COLOR_PRIM_BT_2020) return false;
-        if (IsFullRgb8(source))
-            return frame.repr.sys==PL_COLOR_SYSTEM_RGB && frame.repr.levels==PL_COLOR_LEVELS_FULL;
-        if (IsLimitedR10l(source))
-            return frame.repr.sys==PL_COLOR_SYSTEM_RGB && frame.repr.levels==PL_COLOR_LEVELS_LIMITED;
+        if (!source.backingOwner || frame.color.primaries!=PL_COLOR_PRIM_BT_2020 ||
+            (frame.color.transfer!=PL_COLOR_TRC_PQ && frame.color.transfer!=PL_COLOR_TRC_HLG))
+            return false;
+        // Sample the captured RGB even when the renderer uploaded P010.
+        if (NativeRgbCodeRange(source).white) {
+            const auto levels=source.range==AnalysisLumaRange::Full ?
+                PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED;
+            return frame.repr.levels==levels && (frame.repr.sys==PL_COLOR_SYSTEM_RGB ||
+                frame.repr.sys==PL_COLOR_SYSTEM_BT_2020_NC);
+        }
         return IsLimitedBt2020Yuv(source) && frame.repr.sys==PL_COLOR_SYSTEM_BT_2020_NC &&
             frame.repr.levels==PL_COLOR_LEVELS_LIMITED;
+    }
+
+    inline bool InferHlgMeasurementColor(pl_color_space& source, pl_color_space target)
+    {
+        pl_color_space_infer_map(&source,&target);
+        // libplacebo adapts HLG to an HDR destination directly. Only measure
+        // when source luminance exceeds the inferred destination luminance.
+        return source.hdr.max_luma>target.hdr.max_luma+1e-6f;
+    }
+
+
+    inline bool ReplacesDetector(const Decision& decision, const pl_color_space& source,
+        const pl_color_space& target)
+    {
+        if (!decision.replaceDetector || !decision.hlgMax)
+            return decision.replaceDetector;
+        // A queued HLG packet can outlive a target change. Its luminance
+        // measurements are valid only under the original inference contract.
+        if (source.transfer!=PL_COLOR_TRC_HLG) return false;
+        auto color=source;
+        return InferHlgMeasurementColor(color,target) &&
+            color.hdr.min_luma==decision.hlgMin && color.hdr.max_luma==decision.hlgMax;
     }
 
     inline bool HasSourceLuminance(const pl_hdr_metadata& hdr)
@@ -79,87 +120,104 @@ namespace CompactHdrPeak
         return true;
     }
 
-    inline void Apply(const Decision& decision, pl_frame& frame, pl_render_params& params)
+    inline void Apply(const Decision& decision, pl_frame& frame, const pl_color_space& target,
+        pl_render_params& params)
     {
-        if (!params.peak_detect_params || !decision.replaceDetector) return;
+        if (!params.peak_detect_params || !ReplacesDetector(decision,frame.color,target)) return;
         Apply(decision.measurement,frame.color.hdr);
         params.peak_detect_params=nullptr;
     }
 
-    // A stratified grid over the encoded source. At this grid size a 99.995th
-    // percentile has less than one sample in its tail. Use sample maxima and
-    // identify this as an approximation, separate from libplacebo's histogram.
-    inline Measurement Measure(const AnalysisLumaSource& source)
+    template<unsigned Size, int Black, int White>
+    const std::array<float,Size>& PqNitsTable()
     {
-        const bool rgb8=IsFullRgb8(source);
-        const bool r10l=IsLimitedR10l(source);
-        if ((!rgb8 && !r10l && !IsLimitedBt2020Yuv(source)) || !source.IsValid()) return {};
-        static const auto nits=[] {
-            std::array<float,1024> values{};
-            for (size_t i=0; i<values.size(); ++i)
-                values[i]=pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,static_cast<float>(i)/1023.0f);
-            return values;
+        static const auto values=[] {
+            std::array<float,Size> table{};
+            for (size_t i=0; i<table.size(); ++i) {
+                const float pq=(static_cast<float>(i)-Black)/(White-Black);
+                table[i]=pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,(std::min)(1.0f,(std::max)(0.0f,pq)));
+            }
+            return table;
         }();
-        const auto toNits=[&](float pq) {
-            const float bounded=(std::min)(1.0f,(std::max)(0.0f,pq));
-            return nits[static_cast<size_t>(1023.0f*bounded+0.5f)];
-        };
-        static const auto rgb8Nits=[] {
-            std::array<float,256> values{};
-            for (size_t i=0; i<values.size(); ++i)
-                values[i]=pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,static_cast<float>(i)/255.0f);
-            return values;
-        }();
-        const auto limitedRgbNits=[](uint16_t code) {
-            // Match the renderer's limited RGB range. The lookup is built only
-            // when a packed R10l request reaches the worker.
-            static const auto values=[] {
-                std::array<float,1024> table{};
-                for (size_t i=0; i<table.size(); ++i) {
-                    const float pq=(static_cast<float>(i)-64.0f)/876.0f;
-                    table[i]=pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,
-                        (std::min)(1.0f,(std::max)(0.0f,pq)));
-                }
-                return table;
-            }();
-            return values[code];
-        };
+        return values;
+    }
+
+    // A 128x72 stratified grid is too small to estimate a 99.995th percentile.
+    // Use the sample maximum as an approximation of the GPU histogram peak.
+    inline Measurement Measure(const AnalysisLumaSource& source, const pl_color_space& color=pl_color_space_hdr10)
+    {
+        const auto rgb=NativeRgbCodeRange(source);
+        if ((!rgb.white && !IsLimitedBt2020Yuv(source)) || !source.IsValid()) return {};
+        const bool hlg=color.transfer==PL_COLOR_TRC_HLG;
+        const bool rgb8=rgb.white==255;
         const bool bgra=source.encoding==VideoFrameEncoding::BGRA_8BIT;
+        const float* pqNits=nullptr;
+        if (!hlg) {
+            if (rgb8)
+                pqNits=PqNitsTable<256,0,255>().data();
+            else if (rgb.white==960)
+                pqNits=PqNitsTable<1024,64,960>().data();
+            else if (rgb.white==940)
+                pqNits=PqNitsTable<1024,64,940>().data();
+            else
+                pqNits=PqNitsTable<1024,0,1023>().data();
+        }
+        const auto toNits=[pqNits](float pq) {
+            const float bounded=(std::min)(1.0f,(std::max)(0.0f,pq));
+            return pqNits[static_cast<size_t>(1023.0f*bounded+0.5f)];
+        };
+        const float rgbScale=rgb.white ? 1.0f/(rgb.white-rgb.black) : 0.0f;
         const int columns=(std::min)(source.width,128);
         const int rows=(std::min)(source.height,72);
         Measurement result;
         double sumPq=0, sumRgb=0;
         for (int j=0; j<rows; ++j)
         {
-            const size_t y=static_cast<size_t>((int64_t(2*j+1)*source.height)/(2*rows));
-            const auto* row=source.data+y*source.rowBytes;
+            const int y=static_cast<int>((int64_t(2*j+1)*source.height)/(2*rows));
+            const auto* row=source.data+static_cast<size_t>(y)*source.rowBytes;
             for (int i=0; i<columns; ++i)
             {
-                const size_t x=static_cast<size_t>((int64_t(2*i+1)*source.width)/(2*columns));
+                const int x=static_cast<int>((int64_t(2*i+1)*source.width)/(2*columns));
                 float red, green, blue;
-                if (rgb8) {
-                    const auto* pixel=row+4*x;
-                    red=rgb8Nits[pixel[bgra?2:1]];
-                    green=rgb8Nits[pixel[bgra?1:2]];
-                    blue=rgb8Nits[pixel[bgra?0:3]];
-                } else if (r10l) {
+                if (rgb.white) {
                     uint16_t r, g, b;
-                    if (!source.SampleNativeRgb10(static_cast<int>(x),static_cast<int>(y),r,g,b)) return {};
-                    red=limitedRgbNits(r);
-                    green=limitedRgbNits(g);
-                    blue=limitedRgbNits(b);
+                    if (rgb8) {
+                        const auto* pixel=row+static_cast<size_t>(x)*4;
+                        r=pixel[bgra?2:1];
+                        g=pixel[bgra?1:2];
+                        b=pixel[bgra?0:3];
+                    } else if (!source.SampleNativeRgb10(x,y,r,g,b)) {
+                        return {};
+                    }
+                    red=hlg ? (r-rgb.black)*rgbScale : pqNits[r];
+                    green=hlg ? (g-rgb.black)*rgbScale : pqNits[g];
+                    blue=hlg ? (b-rgb.black)*rgbScale : pqNits[b];
                 } else {
                     AnalysisLumaSample sample;
-                    if (!source.Sample(static_cast<int>(x),static_cast<int>(y),sample)) return {};
-                    // Native readers return 10-bit codes, including 8-bit
-                    // limited codes scaled by four. Undo the non-constant
-                    // luminance matrix in PQ code space before linearizing.
+                    if (!source.Sample(x,y,sample)) return {};
+                    // Decode non-constant luminance YCbCr to nonlinear RGB
+                    // before interpreting the PQ or HLG transfer.
                     const float luma=(sample.luma-64.0f)/876.0f;
                     const float cb=(sample.chromaU-512.0f)/896.0f;
                     const float cr=(sample.chromaV-512.0f)/896.0f;
-                    red=toNits(luma+1.4746f*cr);
-                    green=toNits(luma-0.164553f*cb-0.571353f*cr);
-                    blue=toNits(luma+1.8814f*cb);
+                    red=luma+1.4746f*cr;
+                    green=luma-0.164553f*cb-0.571353f*cr;
+                    blue=luma+1.8814f*cb;
+                    if (!hlg) {
+                        red=toNits(red);
+                        green=toNits(green);
+                        blue=toNits(blue);
+                    }
+                }
+                if (hlg) {
+                    // The HLG OOTF depends on all channels and the inferred
+                    // black/peak luminance, so separate RGB lookups are insufficient.
+                    if ((std::max)({red,green,blue})<=0.0f) continue;
+                    float linear[]={red,green,blue};
+                    pl_color_linearize(&color,linear);
+                    red=linear[0]*PL_COLOR_SDR_WHITE;
+                    green=linear[1]*PL_COLOR_SDR_WHITE;
+                    blue=linear[2]*PL_COLOR_SDR_WHITE;
                 }
                 const float yNits=0.2627f*red+0.6780f*green+0.0593f*blue;
                 if (yNits<=0.0f) continue;
