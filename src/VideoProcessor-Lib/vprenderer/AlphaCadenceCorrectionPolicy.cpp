@@ -177,9 +177,22 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 
 	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
+	// A whole surplus source is in the chain when the depth shows it, or when
+	// the newest presented source reached the screen two display periods or
+	// more after the queue's rest of desired - 1 sources. That time holds the
+	// display's queue, the loop's wait, the head's age and the depth alike.
+	const double displayPeriodMs = 1000.0 / input.displayRateHz;
+	const double queueRestMs =
+		static_cast<double>(desired - 1) * 1000.0 / input.captureRateHz;
+	const double surplusMarginMs =
+		std::min(SURPLUS_MARGIN_MS, displayPeriodMs / 2.0);
+	const bool surplusSource = input.queueDepth >= desired ||
+		(input.lastPresentedArrivalToScreenMs >= 0.0 &&
+			input.lastPresentedArrivalToScreenMs - queueRestMs >=
+				2.0 * displayPeriodMs + surplusMarginMs);
 	if (m_rateFilterSamples >= MINIMUM_PREDICTION_SAMPLES &&
 		m_predictionDirection != AlphaCadenceAction::Repeat &&
-		input.queueDepth >= desired)
+		surplusSource)
 	{
 		if (m_surplusFrames < SURPLUS_CONFIRM_FRAMES)
 			++m_surplusFrames;
@@ -192,7 +205,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		// The queue has held a surplus source for SURPLUS_CONFIRM_FRAMES
 		// evaluations: the forecast is behind the queue (a reset while a
 		// surplus was queued, or the sub-frame phase at start). Bring the
-		// phase to the action point; the queue and scene gates still decide.
+		// phase to the action point; the scene and fallback gates still decide.
 		m_phaseFrames = ACTION_PHASE_FRAMES;
 		m_plannedFrames = std::max(m_plannedFrames, m_surplusFrames);
 	}
@@ -289,16 +302,10 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			input.oldestQueuedAgeMs >= MAXIMUM_QUEUE_AGE_MS);
 	decision.diagnostic.fallbackEligible = deadlineAuthorized;
 
-	// queueDepth is measured after the dequeue, which rests at desired - 1;
-	// depth == desired is already one surplus source.
-	if (requested == AlphaCadenceAction::Drop &&
-		input.queueDepth < desired)
-	{
-		decision.phaseFrames = m_phaseFrames;
-		decision.blockReason =
-			AlphaCadenceBlockReason::DropQueueNotAboveDesired;
-		return decision;
-	}
+	// No queue-depth gate on a drop: at 1:1 the post-dequeue depth is the last
+	// place a surplus source shows, after the driver's presentation queue, the
+	// loop block and the head's age. A due phase is a whole surplus source
+	// somewhere in the chain, and the frames in flight cover the skipped one.
 	if (requested == AlphaCadenceAction::Repeat &&
 		input.queueDepth >= desired)
 	{
@@ -346,6 +353,9 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	m_lastSceneEventId = input.sceneEventId;
 	m_phaseFrames += requested == AlphaCadenceAction::Drop ? -1.0 : 1.0;
 	m_plannedFrames = 0;
+	// The newest presented source still shows the spare frame for a few
+	// evaluations after the drop; a second ask needs a full new confirm.
+	m_surplusFrames = 0;
 	m_verificationPending = true;
 	m_verificationAction = requested;
 	m_verificationDebt = input.presentationDebt;

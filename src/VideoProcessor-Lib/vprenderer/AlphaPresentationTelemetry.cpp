@@ -9,6 +9,10 @@ namespace
 {
 	constexpr uint32_t MIN_STABLE_SAMPLES = 8;
 	constexpr uint32_t MAX_DUPLICATE_OBSERVATIONS = 16;
+	// Samples in a row without a new arrival-to-screen reading before it lapses
+	// to unknown. Well under the cadence policy's 120-evaluation surplus
+	// confirm, so a reading that stops refreshing lapses before it can ask.
+	constexpr uint32_t ARRIVAL_TO_SCREEN_LAPSE_SAMPLES = 16;
 	constexpr double MIN_STABLE_SECONDS = 0.25;
 	constexpr double MAX_EXPECTED_RATE_RELATIVE_ERROR = 0.01;
 
@@ -88,6 +92,7 @@ void AlphaPresentationTelemetry::Observe(
 		sample.qpcFrequency == m_lastObservedSample.qpcFrequency &&
 		sample.expectedDisplayHz == m_lastObservedSample.expectedDisplayHz)
 	{
+		AgeArrivalToScreen();
 		if (m_duplicateObservations < MAX_DUPLICATE_OBSERVATIONS)
 			++m_duplicateObservations;
 		if (m_duplicateObservations >= MAX_DUPLICATE_OBSERVATIONS)
@@ -129,6 +134,7 @@ void AlphaPresentationTelemetry::Observe(
 		}
 	}
 
+	bool arrivalToScreenMeasured = false;
 	for (AlphaPresentationRecord& record : m_records)
 	{
 		if (!record.presented && record.presentId != 0 &&
@@ -137,11 +143,30 @@ void AlphaPresentationTelemetry::Observe(
 			record.presented = true;
 			record.presentedRefresh = sample.presentRefreshCount;
 			record.presentedQpc = sample.syncQpc;
+			// PresentCount is the newest present on screen and
+			// PresentRefreshCount its refresh. When the sync sample is that
+			// refresh, SyncQPCTime is when this source reached the screen. A
+			// record this sample reaches past its own present would take a
+			// later refresh, so only the newest present is measured.
+			if (record.presentId == sample.presentCount &&
+				sample.syncRefreshCount == sample.presentRefreshCount &&
+				!record.cadenceRepeat && record.enqueueQpc > 0 &&
+				sample.syncQpc > record.enqueueQpc)
+			{
+				m_lastPresentedArrivalToScreenMs =
+					static_cast<double>(sample.syncQpc - record.enqueueQpc) *
+					1000.0 / static_cast<double>(sample.qpcFrequency);
+				arrivalToScreenMeasured = true;
+			}
 			m_lastPresentedSequence =
 				std::max(m_lastPresentedSequence, record.sourceSequence);
 			m_lastPresentRefresh = sample.presentRefreshCount;
 		}
 	}
+	if (arrivalToScreenMeasured)
+		m_samplesWithoutArrivalToScreen = 0;
+	else
+		AgeArrivalToScreen();
 
 	if (m_cadenceSamples == 0)
 	{
@@ -206,6 +231,7 @@ AlphaPresentationSnapshot AlphaPresentationTelemetry::Snapshot() const
 	snapshot.lastPresentRefresh = m_lastPresentRefresh;
 	snapshot.measuredDisplayHz = m_measuredDisplayHz;
 	snapshot.cadenceSamples = m_cadenceSamples;
+	snapshot.lastPresentedArrivalToScreenMs = m_lastPresentedArrivalToScreenMs;
 	return snapshot;
 }
 
@@ -220,4 +246,14 @@ void AlphaPresentationTelemetry::ResetCadence(
 	m_lastSyncQpc = 0;
 	m_qpcFrequency = 0;
 	m_measuredDisplayHz = 0.0;
+	m_lastPresentedArrivalToScreenMs = -1.0;
+	m_samplesWithoutArrivalToScreen = 0;
+}
+
+void AlphaPresentationTelemetry::AgeArrivalToScreen()
+{
+	if (m_samplesWithoutArrivalToScreen < ARRIVAL_TO_SCREEN_LAPSE_SAMPLES)
+		++m_samplesWithoutArrivalToScreen;
+	if (m_samplesWithoutArrivalToScreen >= ARRIVAL_TO_SCREEN_LAPSE_SAMPLES)
+		m_lastPresentedArrivalToScreenMs = -1.0;
 }
