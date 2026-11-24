@@ -75,6 +75,7 @@ public:
     FrameCriticalPathProbe() { char value[8]{};
         enabled=GetEnvironmentVariableA("VP_CRITICAL_PATH",value,sizeof(value))==1&&value[0]=='1';
         LARGE_INTEGER q{}; QueryPerformanceFrequency(&q); frequency=q.QuadPart; }
+    bool Enabled() const { return enabled; }
     class Scope {
         FrameCriticalPathProbe& owner; std::array<Stamp,5> stamps{};
         size_t marked=0; bool success=false; double budget=0;

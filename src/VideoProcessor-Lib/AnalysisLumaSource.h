@@ -61,6 +61,13 @@ struct AnalysisLumaSource
 	bool IsValid() const;
 	bool Sample(int x, int y, AnalysisLumaSample& result) const;
 
+    // Read encoded native RGB components in their 10-bit code domain.
+    bool SampleNativeRgb10(int x, int y, uint16_t& red, uint16_t& green, uint16_t& blue) const;
+
+    // Read exactly the same codes as Sample on a strided row, validating the
+    // immutable source and sample extent once before accessing its pixels.
+    bool SampleRow(int y, int x, int step, AnalysisLumaSample* samples, size_t count) const;
+
     // Exact Sample().luma threshold/count/span on a strided row. Validate once
     // and avoid fetching/converting chroma when the consumer only needs luma.
     bool MeasureLumaRowContent(int y, int x0, int x1, int step,
@@ -71,6 +78,8 @@ struct AnalysisLumaSource
     // true with withinLimits=false and counts the first rejected pixel.
     bool RowWithinLimits(int y, uint16_t lumaMax, uint16_t chromaDeviation,
         bool& withinLimits, size_t& samplesChecked) const;
+private:
+    bool SampleValidated(int x, int y, AnalysisLumaSample& result) const;
 };
 
 const char* AnalysisLumaFormatName(const AnalysisLumaSource& source);

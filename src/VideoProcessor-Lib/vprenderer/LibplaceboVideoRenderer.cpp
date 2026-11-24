@@ -9,6 +9,8 @@
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
 #include "FrameCriticalPathProbe.h"
+#include "CompactHdrPeak.h"
+#include "OptionalAnalysisWorker.h"
 #include "ProcessingPerformanceWindow.h"
 #include "LookaheadPerformanceWindow.h"
 #include <vprenderer/QueueNativeContinuity.h>
@@ -4392,6 +4394,8 @@ public:
 	AlphaFrameGpuTimingScope(const AlphaFrameGpuTimingScope&) = delete;
 	AlphaFrameGpuTimingScope& operator=(const AlphaFrameGpuTimingScope&) = delete;
 
+	bool Issued() const { return m_issued; }
+
 	void EndRender()
 	{
 		if (m_issued && !m_ended)
@@ -4619,6 +4623,24 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t lastAnalysisBudgetLogTick=0;
     bool lastAnalysisBudgetSkippedBoundary=false;
     uint64_t analysisPerformanceLogTick=0;
+    struct ActiveOverrun
+    {
+        uint64_t generation=0, source=0, sourceFrame=0, presentId=0, submission=0;
+        int64_t submitQpc=0;
+        int subtitleMode=0;
+        bool composed=false, temporal=false, nlsRetry=false, gpuRequested=false;
+        unsigned drawCalls=0;
+        double activeMs=0, preRenderMs=0, renderLockWaitMs=0, preparationMs=0, renderMs=0, swapMs=0;
+        double lookaheadMs=0, uploadMs=0, subtitleCueMs=0, subtitlePrepareMs=0;
+        double drawWallMs=0, invocationWallMs=0, postRenderMs=0, hdrStatusMs=0;
+        double referenceScanMs=0, continuationSeedMs=0;
+        unsigned referenceSamples=0;
+    };
+    uint64_t activeOverrunWindowTick=0;
+    unsigned activeOverrunCount=0;
+    ActiveOverrun activeOverrunPeak;
+    ActiveOverrun activeOverrunAwaitingGpu;
+    std::array<AlphaD3D11FrameGpuTimer::Sample, 64> activeOverrunGpuSamples{};
     SubtitlePendingMeasurementGuard subtitlePendingGuard;
     struct SubtitlePerfWindow {
         uint64_t frames=0,pending=0,recovered=0,compose[2]{},gpuSamples[2]{};
@@ -4864,6 +4886,56 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaRenderLoadMeter originalPrRenderLoadMeter;
 	AlphaPr75PassAccumulator originalPrPassAccumulator;
 	uint64_t renderTimingComparisonOrdinal = 0;
+    enum class GpuTimingExperiment { Default, NoPass, WallOnly };
+    const GpuTimingExperiment gpuTimingExperiment = [] {
+        char value[16]{};
+        const DWORD length=GetEnvironmentVariableA("VP_DIAG_GPU_TIMERS",value,sizeof(value));
+        if (length && length<sizeof(value))
+        {
+            if (std::strcmp(value,"no-pass")==0) return GpuTimingExperiment::NoPass;
+            if (std::strcmp(value,"wall-only")==0) return GpuTimingExperiment::WallOnly;
+        }
+        return GpuTimingExperiment::Default;
+    }();
+    const bool lightweightActiveWorkTrace = [] {
+        char value[2]{};
+        return GetEnvironmentVariableA("VP_ACTIVE_WORK_TRACE",value,sizeof(value))==1 &&
+            value[0]=='1';
+    }();
+    struct TimingLaneTotals {
+        AnalysisPerformanceWindow::Cost active, draw;
+        uint64_t over12Ms=0;
+    };
+    std::array<TimingLaneTotals, 3> timingLaneTotals{};
+    const bool peakDetectionSweep = [] {
+        char value[2]{};
+        return GetEnvironmentVariableA("VP_DIAG_PEAK_SWEEP",value,sizeof(value))==1 &&
+            value[0]=='1';
+    }();
+    const bool suppressPeakWithSubtitlePanels = [] {
+        char value[2]{};
+        return GetEnvironmentVariableA("VP_DIAG_PEAK_OFF_WITH_SUBTITLE_PANELS",value,sizeof(value))==1 &&
+            value[0]=='1';
+    }();
+    const bool compactPeakEnabled = [] {
+        char value[2]{};
+        return GetEnvironmentVariableA("VP_DIAG_COMPACT_HDR_PEAK",value,sizeof(value))==1 &&
+            value[0]=='1';
+    }();
+    using CompactPeakWorker = OptionalAnalysisWorker<CompactHdrPeak::Measurement,1>;
+    CompactPeakWorker compactPeakWorker;
+    std::shared_ptr<CompactPeakWorker::Slot> compactPeakPending;
+    CompactHdrPeak::Measurement compactPeakLatest;
+    SceneDetector compactPeakSceneDetector;
+    uint64_t compactPeakGeneration=0, compactPeakFormat=0, compactPeakEpoch=0;
+    uint64_t compactPeakContext=0, compactPeakRequestContext=0;
+    uint64_t compactPeakRequestSource=0, compactPeakRequestMs=0, compactPeakLatestMs=0;
+    uint64_t compactPeakNextMs=0, compactPeakLogMs=0;
+    uint64_t compactPeakUsed=0, compactPeakFallback=0, compactPeakAuthored=0;
+    bool compactPeakWasEligible=false;
+    uint64_t peakSweepStartMs=0;
+    uint64_t peakSweepGeneration=0;
+    int lastPeakSweepPhase=-1;
 	std::atomic<double> latestGpuSourceUploadMs{ 0.0 };
 	std::atomic<double> latestGpuOverlayUploadMs{ 0.0 };
 	std::atomic<double> latestGpuCoreRenderMs{ 0.0 };
@@ -5673,6 +5745,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!outputResourcesRetired)
 		{
             nlsPreparation.Stop();
+            compactPeakWorker.Stop();
+            compactPeakPending.reset();
             subtitlePipelinePreparation.Stop();
             pictureProofWorker.Stop();
             lookaheadMeasurementWorker.Stop();
@@ -5749,8 +5823,137 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
+    CompactHdrPeak::Measurement UpdateCompactPeak(const AnalysisLumaSource& pixels,
+        uint64_t generation, uint64_t format, uint64_t epoch, uint64_t source,
+        bool eligible, bool sceneBoundary, const pl_hdr_metadata* sourceLuminance, bool temporal)
+    {
+        constexpr uint64_t analysisIntervalMs=200, maximumAgeMs=500;
+        const uint64_t now=GetTickCount64();
+        if (eligible!=compactPeakWasEligible || generation!=compactPeakGeneration ||
+            format!=compactPeakFormat || epoch!=compactPeakEpoch || (eligible && sceneBoundary))
+        {
+            ++compactPeakContext;
+            compactPeakGeneration=generation;
+            compactPeakFormat=format;
+            compactPeakEpoch=epoch;
+            compactPeakWasEligible=eligible;
+            compactPeakLatest={};
+            compactPeakLatestMs=compactPeakNextMs=0;
+        }
+        // The worker publishes before clearing pending. Only load the completed
+        // result after observing completion. Each request has a private slot.
+        if (compactPeakPending && !compactPeakPending->pending.load(std::memory_order_acquire))
+        {
+            const auto completed=CompactPeakWorker::Ready(compactPeakPending);
+            if (eligible && completed &&
+                compactPeakRequestContext==compactPeakContext &&
+                compactPeakRequestSource<=source && now-compactPeakRequestMs<=maximumAgeMs)
+            {
+                auto value=*completed;
+                if (now-compactPeakLatestMs<=maximumAgeMs)
+                    CompactHdrPeak::Smooth(value,compactPeakLatest);
+                compactPeakLatest=value;
+                compactPeakLatestMs=compactPeakRequestMs;
+            }
+            compactPeakPending.reset();
+        }
+        if (eligible && !compactPeakPending && now>=compactPeakNextMs)
+        {
+            compactPeakNextMs=now+analysisIntervalMs;
+            try {
+                auto slot=std::make_shared<CompactPeakWorker::Slot>();
+                if (compactPeakWorker.Submit(slot,generation,source,source,
+                    [pixels] { return CompactHdrPeak::Measure(pixels); }))
+                {
+                    compactPeakPending=std::move(slot);
+                    compactPeakRequestContext=compactPeakContext;
+                    compactPeakRequestSource=source;
+                    compactPeakRequestMs=now;
+                }
+            } catch (...) {
+                // Allocation failure is a missing optional measurement.
+            }
+        }
+        const bool usable=eligible && compactPeakLatest.samples &&
+            now-compactPeakLatestMs<=maximumAgeMs;
+        if (sourceLuminance) ++compactPeakAuthored;
+        else if (usable) ++compactPeakUsed;
+        else if (eligible) ++compactPeakFallback;
+        if (now>=compactPeakLogMs) {
+            compactPeakLogMs=now+2000;
+            const auto worker=compactPeakWorker.Snapshot();
+            DebugLog::Log("VP compact HDR peak: generation=%llu source=%llu path=%s temporal=%d samples=%u peak_pq=%.6f average_pq=%.6f age_ms=%llu authored_draws=%llu measured_draws=%llu fallback_draws=%llu worker_complete=%llu worker_peak_ms=%.3f worker_queue_peak_ms=%.3f",
+                static_cast<unsigned long long>(generation),
+                static_cast<unsigned long long>(source), sourceLuminance?"authored":eligible?"compact":"original",temporal?1:0,
+                usable?compactPeakLatest.samples:0,
+                sourceLuminance?sourceLuminance->max_pq_y:usable?compactPeakLatest.peakPq:0.0,
+                sourceLuminance?sourceLuminance->avg_pq_y:usable?compactPeakLatest.averagePq:0.0,
+                static_cast<unsigned long long>(usable?now-compactPeakLatestMs:0),
+                static_cast<unsigned long long>(compactPeakAuthored),
+                static_cast<unsigned long long>(compactPeakUsed),
+                static_cast<unsigned long long>(compactPeakFallback),
+                static_cast<unsigned long long>(worker.completed),worker.wallPeakUs/1000.0,
+                worker.queuePeakUs/1000.0);
+            compactPeakAuthored=compactPeakUsed=compactPeakFallback=0;
+        }
+        return usable?compactPeakLatest:CompactHdrPeak::Measurement{};
+    }
+
+    void LogActiveOverrunGpu(const ActiveOverrun& peak, const AlphaD3D11FrameGpuTimer::Sample& sample)
+    {
+        DebugLog::Log("VP active work overrun GPU: generation=%llu source=%llu present_id=%llu submission=%llu gpu_stage_sum_ms=%.3f core_ms=%.3f upload_ms=%.3f overlay_ms=%.3f subtitle_ms=%.3f resolve_lag_frames=%llu",
+            static_cast<unsigned long long>(peak.generation),
+            static_cast<unsigned long long>(peak.source),
+            static_cast<unsigned long long>(peak.presentId),
+            static_cast<unsigned long long>(peak.submission),
+            sample.milliseconds,sample.coreRenderMilliseconds,sample.sourceUploadMilliseconds,
+            sample.overlayUploadMilliseconds,
+            sample.subtitleBlackMilliseconds+sample.subtitleGeneratedMilliseconds,
+            static_cast<unsigned long long>(sample.lagFrames));
+    }
+
+    void RecordActiveOverrunGpu(const AlphaD3D11FrameGpuTimer::Sample& sample)
+    {
+        activeOverrunGpuSamples[sample.submissionSerial % activeOverrunGpuSamples.size()]=sample;
+        const auto& pending=activeOverrunAwaitingGpu;
+        if (pending.submission && pending.submission==sample.submissionSerial &&
+            pending.generation==sample.generation && pending.source==sample.sourceSequence)
+        {
+            LogActiveOverrunGpu(pending,sample);
+            activeOverrunAwaitingGpu={};
+        }
+    }
+
+    void FlushActiveOverrun()
+    {
+        if (!activeOverrunCount) return;
+        const auto& peak=activeOverrunPeak;
+        const auto& gpu=activeOverrunGpuSamples[peak.submission % activeOverrunGpuSamples.size()];
+        const bool gpuReady=gpu.submissionSerial==peak.submission &&
+            gpu.generation==peak.generation && gpu.sourceSequence==peak.source;
+        DebugLog::Log(
+            "VP active work overrun: generation=%llu source=%llu source_frame=%llu present_id=%llu submission=%llu swap_end_qpc=%lld subtitle_mode=%d composed=%d temporal=%d nls_retry=%d draw_calls=%u gpu_sample=%s active_ms=%.3f overrun_count=%u pre_render_active_ms=%.3f render_lock_wait_ms=%.3f live_preparation_ms=%.3f render_wrapper_ms=%.3f swap_ms=%.3f lookahead_ms=%.3f source_upload_cpu_ms=%.3f subtitle_cue_ms=%.3f subtitle_prepare_wall_ms=%.3f draw_wall_ms=%.3f render_through_invocation_wall_ms=%.3f post_render_wall_ms=%.3f hdr_status_wall_ms=%.3f subtitle_reference_scan_ms=%.3f subtitle_continuation_seed_ms=%.3f subtitle_reference_samples=%u details=subsets_not_additive",
+            static_cast<unsigned long long>(peak.generation),
+            static_cast<unsigned long long>(peak.source),
+            static_cast<unsigned long long>(peak.sourceFrame),
+            static_cast<unsigned long long>(peak.presentId),
+            static_cast<unsigned long long>(peak.submission),
+            static_cast<long long>(peak.submitQpc),peak.subtitleMode,peak.composed?1:0,
+            peak.temporal?1:0,peak.nlsRetry?1:0,peak.drawCalls,
+            gpuReady?"resolved":peak.gpuRequested?"pending-or-unavailable":"not-requested",
+            peak.activeMs,activeOverrunCount,peak.preRenderMs,peak.renderLockWaitMs,
+            peak.preparationMs,peak.renderMs,peak.swapMs,peak.lookaheadMs,peak.uploadMs,
+            peak.subtitleCueMs,peak.subtitlePrepareMs,peak.drawWallMs,peak.invocationWallMs,
+            peak.postRenderMs,peak.hdrStatusMs,peak.referenceScanMs,peak.continuationSeedMs,peak.referenceSamples);
+        if (gpuReady) LogActiveOverrunGpu(peak,gpu);
+        else if (peak.gpuRequested) activeOverrunAwaitingGpu=peak;
+        activeOverrunCount=0;
+        activeOverrunPeak={};
+    }
+
 	~Impl()
 	{
+        FlushActiveOverrun();
 		if (!externalStateAbandonedForShutdown && !RetireOutput())
 			DebugLog::Log(
 				"VP Renderer retirement: final external-state restoration "
@@ -6379,7 +6582,12 @@ struct LibplaceboVideoRenderer::Impl
 		parameterSettings.quality = settings.quality;
 		parameterSettings.toneMapping = settings.toneMapping;
 		parameterSettings.gamutMapping = settings.gamutMapping;
-		parameterSettings.peakDetection = settings.peakDetection;
+        // This comparison follows the selected profile so a cue coming or
+        // going cannot switch peak detection within steady playback.
+        const bool suppressPeak = suppressPeakWithSubtitlePanels &&
+            settings.motion.smoothMotion=="off" &&
+            SubtitlePreviewOverridesClassicHandling(settings.subtitleMode);
+		parameterSettings.peakDetection = suppressPeak ? PeakDetection::Off : settings.peakDetection;
 		parameterSettings.toneTuning = settings.toneTuning;
         parameterSettings.dynamicTarget = settings.dynamicTarget;
         parameterSettings.customToneMapping = settings.customToneMapping;
@@ -6429,6 +6637,12 @@ struct LibplaceboVideoRenderer::Impl
 		// taking a VP mutex once per shader pass.
 		renderParams.info_callback = nullptr;
 		renderParams.info_priv = nullptr;
+
+        if (suppressPeakWithSubtitlePanels)
+            DebugLog::Log("VP subtitle peak policy: profile_mode=%s smooth_motion=%s forced_off=%d effective_peak=%s reason=%s",
+                SubtitlePreviewModeName(settings.subtitleMode),settings.motion.smoothMotion.c_str(),
+                suppressPeak?1:0,LibplaceboRenderParameters::ResolvedPeakDetection(renderParams),
+                lifecycle);
 
 		DebugLog::Log("SUBTITLE MODE: mode=%d mode_name=%s box=%d move=%d background=%s padding_sides=%d padding_top=%d padding_bottom=%d inset=%d source_pixels text_reduction_percent=%d rounded_corners=%d background_edge=%s",
             static_cast<int>(CurrentSubtitlePreviewMode()),SubtitlePreviewModeName(CurrentSubtitlePreviewMode()),
@@ -12923,6 +13137,11 @@ struct LibplaceboVideoRenderer::Impl
         presentationAttempt.Begin();
         lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();
+        const bool traceActiveOverrun=lightweightActiveWorkTrace || criticalPathProbe.Enabled();
+        double subtitleCueWorkMs=0.0;
+        double subtitleReferenceScanMs=0.0, subtitleContinuationSeedMs=0.0;
+        unsigned subtitleReferenceSamples=0;
+        double subtitlePreparationWallMs=0.0;
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
 		// the next frame instead of mixing box and cut/paste modes in one render.
 		const SubtitlePreviewMode subtitlePreviewMode =
@@ -14033,7 +14252,7 @@ struct LibplaceboVideoRenderer::Impl
 		// Resolve only old query slots and never flush. Drain a small bounded
 		// number if the driver made several available together; stop immediately
 		// at the first unresolved oldest slot.
-		auto resolveGpuTiming = [this]()
+		auto resolveGpuTiming = [this, traceActiveOverrun]()
 		{
 			for (size_t resolved = 0; resolved < 4; ++resolved)
 			{
@@ -14043,6 +14262,7 @@ struct LibplaceboVideoRenderer::Impl
 				if (resolveResult ==
 					AlphaD3D11FrameGpuTimer::ResolveResult::Resolved)
 				{
+                    if (traceActiveOverrun) RecordActiveOverrunGpu(gpuSample);
 					const bool matched = renderLoadMeter.RecordGpuFrame(
 						gpuSample.generation,
 						gpuSample.sourceSequence, gpuSample.submissionSerial,
@@ -14082,19 +14302,26 @@ struct LibplaceboVideoRenderer::Impl
 				break;
 			}
 		};
-		resolveGpuTiming();
+        if (gpuTimingExperiment!=GpuTimingExperiment::WallOnly) resolveGpuTiming();
 
 		const AlphaGpuTimingSampleMode timingMode =
 			static_cast<AlphaGpuTimingSampleMode>(
 				(++renderTimingComparisonOrdinal - 1) % 2);
-		const bool sampleFrame =
-			timingMode == AlphaGpuTimingSampleMode::Frame;
+        const bool suppressLibplaceboPassTimers=gpuTimingExperiment!=GpuTimingExperiment::Default;
+		const bool sampleFrame = timingMode==AlphaGpuTimingSampleMode::Frame &&
+            gpuTimingExperiment!=GpuTimingExperiment::WallOnly;
 		const bool sampleOriginalPr =
-			timingMode == AlphaGpuTimingSampleMode::OriginalPr;
+			timingMode == AlphaGpuTimingSampleMode::OriginalPr && !suppressLibplaceboPassTimers;
+        if (renderTimingComparisonOrdinal==1 && (traceActiveOverrun || suppressLibplaceboPassTimers))
+            DebugLog::Log("VP timing experiment: libplacebo_pass_queries=%s vp_stage_schedule=%s enhanced_logging=%d thread_cpu_probe=%d",
+                suppressLibplaceboPassTimers?"suppressed-in-measured-draw":"normal",
+                gpuTimingExperiment==GpuTimingExperiment::WallOnly?"disabled":"alternating",
+                DebugLog::IsEnhancedLoggingEnabled()?1:0,criticalPathProbe.Enabled()?1:0);
 		// Staged timing suspends libplacebo's per-pass disjoint queries. Rotating
 		// staged and v1 frames guarantees that disjoint intervals never nest.
 		AlphaLibplaceboTimerSuspensionScope timerSuspension(
-			d3d11, sampleFrame);
+			d3d11, sampleFrame || suppressLibplaceboPassTimers);
+        const bool libplaceboPassTimersSuspended=timerSuspension.Active();
 		if (timerSuspension.Failed() && !timerSuspensionFailureLogged)
 		{
 			timerSuspensionFailureLogged = true;
@@ -14426,12 +14653,17 @@ struct LibplaceboVideoRenderer::Impl
             const bool result=prepare();
             // Each helper below issues at most one actual pl_render_image call.
             // Binding failures and cached output draws are not preparation calls.
-            if(subtitlePreparationRenderer.RenderCallCount()!=before)
-                processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
+            const bool renderedPreparation=subtitlePreparationRenderer.RenderCallCount()!=before;
+            if (renderedPreparation || traceActiveOverrun)
+            {
+                const double elapsedMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
+                if (traceActiveOverrun) subtitlePreparationWallMs+=elapsedMs;
+                if (renderedPreparation) processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
                     static_cast<uint64_t>(sourceSubtitleMode) |
                     (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
                     (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},
-                    GetTickCount64(),std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+                    GetTickCount64(),elapsedMs);
+            }
             return result;
         };
         // This receipt gates subtitle preparation only. Native AR analysis and
@@ -14774,7 +15006,12 @@ struct LibplaceboVideoRenderer::Impl
                 }
             }
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
+            const auto referenceScanStart=traceActiveOverrun?SteadyClock::now():SteadyClock::time_point{};
             subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
+            if (traceActiveOverrun) {
+                subtitleReferenceScanMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-referenceScanStart).count();
+                subtitleReferenceSamples=subtitleBoxPresentation.ReferenceSampleCount();
+            }
             subtitlePreview=&currentSubtitlePreview;
             const bool traceTwoLines = DebugLog::IsEnhancedLoggingEnabled() &&
                 currentSubtitlePreview.current.text.detected && currentSubtitlePreview.current.text.lineCount == 2;
@@ -14787,9 +15024,12 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
             if(subtitleBoxResult.confirmationPending)subtitleCueContinuation.Reset();
             else if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
+                const auto continuationSeedStart=traceActiveOverrun?SteadyClock::now():SteadyClock::time_point{};
                 if(!subtitleCueContinuation.Remember(currentSubtitlePreview,subtitleBoxResult,nlsGeometry,analysisSource))
                     subtitleCueContinuation.AdvanceVerified(currentSubtitlePreview,subtitleBoxResult,
                         analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
+                if (traceActiveOverrun)
+                    subtitleContinuationSeedMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-continuationSeedStart).count();
             }
             else if(!subtitleBoxResult.detected)
                 subtitleCueContinuation.Reset();
@@ -14956,6 +15196,7 @@ struct LibplaceboVideoRenderer::Impl
                     displayBoundsNow.left,displayBoundsNow.top,displayBoundsNow.right,displayBoundsNow.bottom,
                     subtitleBoxResult.revised?1:0);
             const double cost = std::chrono::duration<double, std::milli>(SteadyClock::now()-boxStart).count();
+            if (traceActiveOverrun) subtitleCueWorkMs+=cost;
             subtitlePerf.consumeMs+=cost;subtitlePerf.consumePeak=(std::max)(subtitlePerf.consumePeak,cost);
             // Viewport selection owns crop/fit/NLS. Compose subtitle relocation
             // before those mappings without replacing their current-frame hooks.
@@ -15003,6 +15244,7 @@ struct LibplaceboVideoRenderer::Impl
                     move=ApplyCurrentSubtitleBackingLip(move,lip,subtitleIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,&lipApplicationReason);
                     const double lipMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-lipStarted).count();
+                    if (traceActiveOverrun) subtitleCueWorkMs+=lipMs;
                     subtitlePerf.consumeMs+=lipMs;
                     subtitlePerf.consumePeak=(std::max)(subtitlePerf.consumePeak,cost+lipMs);
                     const auto now=GetTickCount64();
@@ -15535,9 +15777,39 @@ struct LibplaceboVideoRenderer::Impl
         if(capturedSubtitlePacketNew)
             subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
                 subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
+        CompactHdrPeak::Decision sourcePeak;
+        if (compactPeakEnabled)
+        {
+            const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params &&
+                image.color.transfer==PL_COLOR_TRC_PQ;
+            const bool authored = alternate && CompactHdrPeak::HasSourceLuminance(image.color.hdr);
+            const bool measure = alternate && !CompactHdrPeak::HasAuthoredStatistics(image.color.hdr) &&
+                CompactHdrPeak::Supports(analysisSource,image);
+            const auto format=AlphaSourceFormatKey(state);
+            auto peakScene=sceneResult;
+            if (measure && !cadenceRepeat && !sceneDetectionEnabled && !automaticSourceCrop)
+            {
+                // Reuse the small scene signature when normal analysis is
+                // disabled, without publishing a crop or timing decision.
+                if (!compactPeakWasEligible || frameGeneration!=compactPeakGeneration ||
+                    format!=compactPeakFormat || pictureProcessingEpoch!=compactPeakEpoch ||
+                    videoFrame.IsSourceDiscontinuity())
+                    compactPeakSceneDetector.Reset(sceneDetectorGeneration);
+                peakScene=compactPeakSceneDetector.Analyze({nullptr,
+                    static_cast<size_t>(analysisSource.width),static_cast<size_t>(analysisSource.height),0,
+                    sourceSequence,videoFrame.GetTimingTimestamp(),sceneDetectorGeneration,
+                    state.displayMode->FrameDuration(),true,&analysisSource});
+            }
+            sourcePeak.replaceDetector=authored || measure;
+            sourcePeak.measurement=UpdateCompactPeak(analysisSource,frameGeneration,format,
+                pictureProcessingEpoch,sourceSequence,measure,
+                videoFrame.IsSourceDiscontinuity() || peakScene.hardCutCandidate ||
+                    peakScene.hardCutConfirmed || peakScene.nearBlackEntry || peakScene.safeBoundary,
+                authored?&image.color.hdr:nullptr,temporalRenderer.Active());
+        }
         // Capture metadata even while buffering; the selected output may be an
         // older packet by the time a source pass is finally rendered.
-        temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance);
+        temporalRenderer.AnnotateHdrSource(sourceSequence,image,frameDvLuminance,sourcePeak);
         bool temporalSkipPresentation = temporalRenderer.Active() && temporalRenderer.skipOutput;
         if (temporalRenderer.Active()) {
             if (!temporalLedgerWasActive || temporalLedgerGeneration!=frameGeneration ||
@@ -20172,6 +20444,38 @@ releaseDriftBaseRetention =
         const pl_hook* submittedNls = nullptr;
         for(int i=0;i<renderParams.num_hooks;++i)
             if(renderParams.hooks[i]==nlsHook)submittedNls=nlsHook;
+        // Opt-in live comparison. Leave profile storage and the owning
+        // render parameters alone; override only the parameters for this draw.
+        int peakSweepPhase=-1;
+        if (peakDetectionSweep && successfulPresentCount>=240 &&
+            activeSettings.motion.smoothMotion=="off" && !temporalRenderer.Active() &&
+            sourceSubtitleMode==SubtitlePreviewMode::None && renderParams.peak_detect_params &&
+            pl_color_space_is_hdr(&renderImage.color))
+        {
+            constexpr uint64_t phaseMs=35000;
+            const uint64_t tick=GetTickCount64();
+            if (!peakSweepStartMs || peakSweepGeneration!=frameGeneration) {
+                peakSweepStartMs=tick;
+                peakSweepGeneration=frameGeneration;
+                lastPeakSweepPhase=-1;
+            }
+            peakSweepPhase=static_cast<int>((std::min)((tick-peakSweepStartMs)/phaseMs,uint64_t{4}));
+            if (peakSweepPhase!=lastPeakSweepPhase) {
+                constexpr const char* phases[]={"baseline","delayed","standard","off","baseline-repeat"};
+                const auto* configured=renderParams.peak_detect_params;
+                DebugLog::Log("VP peak sweep: generation=%llu source=%llu source_frame=%llu phase=%s percentile=%.3f allow_delayed=%d enabled=%d phase_ms=%llu",
+                    static_cast<unsigned long long>(frameGeneration),
+                    static_cast<unsigned long long>(sourceSequence),
+                    static_cast<unsigned long long>(videoFrame.GetCounter()),phases[peakSweepPhase],
+                    peakSweepPhase==2?100.0:configured->percentile,
+                    peakSweepPhase==1 || configured->allow_delayed ? 1 : 0,peakSweepPhase!=3?1:0,
+                    static_cast<unsigned long long>(phaseMs));
+                lastPeakSweepPhase=peakSweepPhase;
+            }
+        }
+        const bool useDirectAlternatePeak=sourcePeak.replaceDetector && !temporalRenderer.Active();
+        double drawWallMs=0.0;
+        unsigned drawCalls=0;
         auto renderCallTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::RenderInvocation);
         const auto hookRender = NlsHookRecovery::Render(temporalRenderer.ProcessingRenderer(renderer), d3d11->gpu,
             renderImage, target, baseTarget, renderParams, submittedNls, [&]()
@@ -20188,9 +20492,32 @@ releaseDriftBaseRetention =
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
-                return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
+                const auto drawStart=traceActiveOverrun?SteadyClock::now():SteadyClock::time_point{};
+                bool drawn=false;
+                if (useDirectAlternatePeak) {
+                    auto drawParams=parameters;
+                    auto drawImage=source;
+                    CompactHdrPeak::Apply(sourcePeak,drawImage,drawParams);
+                    drawn=temporalRenderer.Render(renderer,drawImage,destination,drawParams,pictureProcessingEpoch);
+                } else if (peakSweepPhase>=0) {
+                    auto drawParams=parameters;
+                    auto peakParams=*parameters.peak_detect_params;
+                    if (peakSweepPhase==1) peakParams.allow_delayed=true;
+                    if (peakSweepPhase==2) peakParams.percentile=100.0f;
+                    drawParams.peak_detect_params=peakSweepPhase==3?nullptr:&peakParams;
+                    drawn=temporalRenderer.Render(renderer,source,destination,drawParams,pictureProcessingEpoch);
+                } else {
+                    drawn=temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
+                }
+                if (traceActiveOverrun)
+                {
+                    ++drawCalls;
+                    drawWallMs+=std::chrono::duration<double,std::milli>(SteadyClock::now()-drawStart).count();
+                }
+                return drawn;
             });
         renderCallTiming.Complete();
+        const auto renderInvocationEnd=traceActiveOverrun?SteadyClock::now():SteadyClock::time_point{};
         auto callbackTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::PostRenderCallbacks);
         bool rendered = hookRender.rendered;
         if (hookRender.retried)
@@ -20249,14 +20576,17 @@ releaseDriftBaseRetention =
 				std::memory_order_relaxed);
 		preparing.Complete();
         callbackTiming.Complete();
+        const auto renderCallbacksEnd=traceActiveOverrun?SteadyClock::now():SteadyClock::time_point{};
         auto hdrStatusTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::HdrStatus);
         RendererHdrStatus renderedHdrStatus;
         if(rendered && !temporalRenderer.HdrStatusSnapshot(renderedHdrStatus))
-            renderedHdrStatus=FrameHdrStatus::Capture(directHdrSource,renderer,renderParams.peak_detect_params!=nullptr);
+            renderedHdrStatus=FrameHdrStatus::Capture(directHdrSource,renderer,
+                renderParams.peak_detect_params!=nullptr && peakSweepPhase!=3 && !useDirectAlternatePeak);
         LogHdrPeakAnalysisMetrics(hdrPeakAnalysisDecision,sourceSequence,rendered,renderedHdrStatus);
         hdrStatusTiming.Complete();
+		const auto renderEnd = SteadyClock::now();
 		const double renderMs = std::chrono::duration<double, std::milli>(
-			SteadyClock::now() - renderStart).count();
+			renderEnd - renderStart).count();
         criticalPath.Mark();
         if (!rendered && targetLutApplied)
             RejectDisplayLutAfterRenderFailure();
@@ -20886,8 +21216,48 @@ releaseDriftBaseRetention =
                 sample.available && !sample.disjoint && presentationSnapshot.evidence==AlphaPresentationEvidence::Stable,
                 preRenderTimings.renderLockWaitMs+livePreparationMs+renderMs);
             analysisPerformance.preparation.Add(livePreparationMs);
-            analysisPerformance.Submission(beforeRenderMs+livePreparationMs+renderMs,
+            const double activeSubmissionMs=beforeRenderMs+livePreparationMs+renderMs;
+            analysisPerformance.Submission(activeSubmissionMs,
                 renderMs,swapBlockMs,captureRateHz,sample.expectedDisplayHz);
+            if (traceActiveOverrun)
+            {
+                if (correlationNow-activeOverrunWindowTick>=1000 ||
+                    (activeOverrunCount && activeOverrunPeak.generation!=frameGeneration))
+                {
+                    FlushActiveOverrun();
+                    activeOverrunWindowTick=correlationNow;
+                }
+                // Keep the worst observed frame, even if it arrives after many smaller overruns.
+                constexpr double activeOverrunThresholdMs=12.0;
+                if (!temporalRenderer.Mixing())
+                {
+                    const size_t lane=!libplaceboPassTimersSuspended ? 1 :
+                        frameGpuTiming.Issued() ? 0 : 2;
+                    auto& totals=timingLaneTotals[lane];
+                    totals.active.Add(activeSubmissionMs);
+                    totals.draw.Add(drawWallMs);
+                    if (activeSubmissionMs>=activeOverrunThresholdMs) ++totals.over12Ms;
+                }
+                if (!temporalRenderer.Mixing() && activeSubmissionMs>=activeOverrunThresholdMs)
+                {
+                    ++activeOverrunCount;
+                    if (activeSubmissionMs>activeOverrunPeak.activeMs)
+                    {
+                        activeOverrunPeak={
+                            frameGeneration,sourceSequence,record.sourceFrameNumber,record.presentId,
+                            renderLoadSubmissionSerial,swapEndQpc,static_cast<int>(sourceSubtitleMode),
+                            subtitleCompositionSucceeded,temporalRenderer.Active(),hookRender.retried,
+                            frameGpuTiming.Issued(),drawCalls,
+                            activeSubmissionMs,preRenderTimings.activeMs,preRenderTimings.renderLockWaitMs,
+                            livePreparationMs,renderMs,swapBlockMs,preRenderTimings.lookaheadMs,
+                            record.sourceUploadCpuMs,subtitleCueWorkMs,subtitlePreparationWallMs,drawWallMs,
+                            std::chrono::duration<double,std::milli>(renderInvocationEnd-renderStart).count(),
+                            std::chrono::duration<double,std::milli>(renderCallbacksEnd-renderInvocationEnd).count(),
+                            std::chrono::duration<double,std::milli>(renderEnd-renderCallbacksEnd).count(),
+                            subtitleReferenceScanMs,subtitleContinuationSeedMs,subtitleReferenceSamples};
+                    }
+                }
+            }
             if(!analysisPerformanceLogTick)analysisPerformanceLogTick=correlationNow;
             if(correlationNow-analysisPerformanceLogTick>=2000){
                 const auto& processed=temporalRenderer.ProcessingSnapshot();
@@ -20921,6 +21291,22 @@ releaseDriftBaseRetention =
                     jobs>0?workerWallMs/jobs:0,worker.wallPeakUs/1000.0,
                     worker.cpuSamples>old.cpuSamples?workerCpuMs/double(worker.cpuSamples-old.cpuSamples):0,
                     worker.cpuSamples-old.cpuSamples,workerCpuMs,workerWallMs);
+                if (traceActiveOverrun)
+                {
+                    constexpr const char* laneNames[]={"vp-stage","libplacebo-pass","no-timer"};
+                    for (size_t i=0; i<timingLaneTotals.size(); ++i)
+                    {
+                        const auto& lane=timingLaneTotals[i];
+                        if (lane.active.count)
+                            DebugLog::Log("VP timing lane: generation=%llu through_source=%llu lane=%s frames=%llu active_avg_ms=%.3f active_peak_ms=%.3f draw_avg_ms=%.3f draw_peak_ms=%.3f active_ge_12_ms=%llu",
+                                static_cast<unsigned long long>(frameGeneration),
+                                static_cast<unsigned long long>(sourceSequence),laneNames[i],
+                                static_cast<unsigned long long>(lane.active.count),
+                                lane.active.Average(),lane.active.peak,lane.draw.Average(),lane.draw.peak,
+                                static_cast<unsigned long long>(lane.over12Ms));
+                    }
+                    timingLaneTotals={};
+                }
                 const auto proofWorker=pictureProofWorker.Snapshot();
                 LogLookaheadUsefulness(diagnosticInstanceId.c_str(),frameGeneration,
                     correlationNow-analysisPerformanceLogTick,captureRateHz,sample.expectedDisplayHz,
@@ -21021,6 +21407,23 @@ releaseDriftBaseRetention =
 				nextFramePacingTraceTick = pacingTraceTick + 2000;
 				const char* reason = submitGap && displayRefreshGap ? "submit_and_display" :
 					(submitGap ? "submit_gap" : "display_refresh_gap");
+				if (preRenderTimings.previewReleaseEvent)
+				{
+					const auto& start = preRenderTimings.previewWaitStart;
+					const auto& wake = preRenderTimings.previewWake;
+					DebugLog::Log(
+						"Alpha preview queue stall: generation=%llu source=%llu source_frame=%llu preview_source=%llu release=%s wait_ms=%.3f eligible_ms=%.3f resume_ms=%.3f start_head=%llu start_depth=%zu start_target=%zu start_prefill=%d start_depth_gate=%s start_conversion=%s wake_head=%llu wake_depth=%zu wake_target=%zu wake_prefill=%d wake_depth_gate=%s wake_conversion=%s",
+						static_cast<unsigned long long>(frameGeneration),
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(videoFrame.GetCounter()),
+						static_cast<unsigned long long>(preRenderTimings.previewSource),
+						preRenderTimings.previewReleaseEvent, preRenderTimings.previewWaitMs,
+						preRenderTimings.previewEligibilityMs, preRenderTimings.previewResumeMs,
+						static_cast<unsigned long long>(start.headSource), start.depth, start.target,
+						start.startupPrefill ? 1 : 0, start.depthGate, start.conversionGate,
+						static_cast<unsigned long long>(wake.headSource), wake.depth, wake.target,
+						wake.startupPrefill ? 1 : 0, wake.depthGate, wake.conversionGate);
+				}
 				if (!DebugLog::IsEnhancedLoggingEnabled())
 				{
 					DebugLog::Log("Alpha frame pacing trace: generation=%llu source=%llu reason=%s submit_gap_ms=%.3f callback_gap_ms=%.3f preview_wait_ms=%.3f preview_source=%llu preview_lock_ms=%.3f preview_eligibility_ms=%.3f preview_resume_ms=%.3f render_ms=%.3f stats_available=%d stats_refresh_delta=%u expected_max_refreshes=%u",
@@ -22117,7 +22520,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
                 ActivePictureDiscardReason::QueueCapacityOverflow);
 			dropCandidate->frame.SourceBufferRelease();
 			m_frameQueue.erase(dropCandidate);
-			ObservePreviewEligibilityLocked();
+			ObservePreviewEligibilityLocked("overflow-eviction");
 		}
 		videoFrame.SourceBufferAddRef();
 		try
@@ -22158,7 +22561,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			queuedFrame.callbackQpc = callbackQpc;
 			queuedFrame.enqueueQpc = PerformanceCounterNow();
 			m_frameQueue.push_back(std::move(queuedFrame));
-			ObservePreviewEligibilityLocked();
+			ObservePreviewEligibilityLocked("enqueue");
 		}
 		catch (const std::exception& e)
 		{
@@ -23298,7 +23701,7 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 		m_queueDepthWindowStartNs = SteadyClockNowNs();
 		m_queueDepthWindowDequeues = 0;
 		m_queueDepthWindowHasSamples = false;
-		ObservePreviewEligibilityLocked();
+		ObservePreviewEligibilityLocked("queue-reconfiguration");
 	}
 	// A target reduction can satisfy an already pending startup prefill.
 	// A target increase after release deliberately does not re-arm it.
@@ -23318,7 +23721,7 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 		// hard capacity used for bursts and overflow protection.
 		m_frameQueueDesiredDepth = AlphaQueuePolicy::ClampDesiredDepthToCapacity(
 			steadyReserveFrames, m_frameQueueMaxSize);
-		ObservePreviewEligibilityLocked();
+		ObservePreviewEligibilityLocked("target-change");
 		DebugLog::Log(
 			"Alpha queue policy: target_frames=%zu target=%zu hard_capacity=%zu",
 			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
@@ -25697,7 +26100,7 @@ void LibplaceboVideoRenderer::ConversionLoop()
 					queued->conversionInProgress = false;
 					queued->conversionFailed = !error.empty();
 					queued->converted = std::move(converted);
-					ObservePreviewEligibilityLocked();
+					ObservePreviewEligibilityLocked("conversion");
                     if (dvLookaheadHandoff && error.empty() && queued != m_frameQueue.begin() &&
                         !queued->cadenceRepeat && !queued->frame.IsSourceDiscontinuity() &&
                         queued->analysis && state->dolbyVisionTunnel &&
@@ -26091,7 +26494,27 @@ void LibplaceboVideoRenderer::RenderLoop()
 			std::unique_lock<std::mutex> previewLock(m_queueMutex);
 			const auto acquired = SteadyClockNowNs();
 			const bool alreadyReady = CanDequeueLocked();
+			const auto queueState = [this]() {
+				AlphaPreviewQueueState state;
+				state.depth = m_frameQueue.size();
+				state.target = PrefillTargetLocked();
+				state.startupPrefill = m_startupPrefillPending;
+				state.depthGate = AlphaQueuePolicy::CanDequeue(
+					state.depth, state.target, state.startupPrefill) ? "ready" :
+					state.depth == 0 ? "empty" :
+					state.startupPrefill ? "startup-prefill" : "steady-low-water";
+				if (!m_frameQueue.empty())
+					state.headSource = m_frameQueue.front().sourceSequence;
+				state.conversionGate = !(m_impl && m_impl->formatter) ? "not-required" :
+					m_frameQueue.empty() ? "no-head" :
+					m_frameQueue.front().converted ? "ready" :
+					m_frameQueue.front().conversionFailed ? "failed" : "pending";
+				return state;
+			};
+			if (!alreadyReady)
+				preRenderTimings.previewWaitStart = queueState();
 			m_previewEligibleNs = 0;
+			m_previewEligibleEvent = nullptr;
 			m_previewWaiting = !alreadyReady;
 			if (!alreadyReady)
 				m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
@@ -26100,6 +26523,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (m_stopRequested) break;
 			previewWaitMs = (resumed - waitStarted) / 1.0e6;
 			preRenderTimings.previewSource = m_frameQueue.front().sourceSequence;
+			if (!alreadyReady)
+			{
+				preRenderTimings.previewWake = queueState();
+				preRenderTimings.previewReleaseEvent =
+					m_previewEligibleNs && m_previewEligibleSource == preRenderTimings.previewSource ?
+						m_previewEligibleEvent : "unobserved";
+			}
 			preRenderTimings.previewLockMs = (acquired - waitStarted) / 1.0e6;
 			if (alreadyReady || (m_previewEligibleNs && m_previewEligibleSource == preRenderTimings.previewSource))
 			{
@@ -27553,7 +27983,7 @@ void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 		queuedFrame.frame.SourceBufferRelease();
 	}
 	m_frameQueue.clear();
-	ObservePreviewEligibilityLocked();
+	ObservePreviewEligibilityLocked("queue-clear");
 }
 
 
@@ -27565,7 +27995,7 @@ size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 }
 
 
-void LibplaceboVideoRenderer::ObservePreviewEligibilityLocked()
+void LibplaceboVideoRenderer::ObservePreviewEligibilityLocked(const char* event)
 {
 	if (!m_previewWaiting)
 		return;
@@ -27579,6 +28009,7 @@ void LibplaceboVideoRenderer::ObservePreviewEligibilityLocked()
 	{
 		m_previewEligibleSource = source;
 		m_previewEligibleNs = SteadyClockNowNs();
+		m_previewEligibleEvent = event;
 	}
 }
 

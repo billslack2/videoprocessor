@@ -388,16 +388,29 @@ private:
         f->paletteValid=true;f->inkFloor=p.inkFloor;f->inkU=p.inkU;f->inkV=p.inkV;f->blackLimit=p.blackLimit;
         const size_t words=(size_t(p.width)*p.height+63)/64;
         f->rawInk.assign(words,0);f->blackBacking.assign(words,0);f->ownedInk.assign(words,0);
-        for(int y=0;y<p.height;++y) {
-            const int sy=p.sourceRows[size_t(y)];if(sy<0 || sy>=source.height){reason="invalid-row";return {};}
-            if(sy<roi.top || sy>=roi.bottom)continue;
-            for(int x=(roi.left+p.step-1)/p.step;x<p.width && x*p.step<roi.right;++x) {
-                if(samples>=budget){reason="sample-budget";return {};}
-                AnalysisLumaSample s;if(!source.Sample(x*p.step,sy,s)){reason="sample-failed";return {};}
-                ++samples;const size_t i=size_t(y)*p.width+x;const uint64_t bit=uint64_t(1)<<(i%64);
-                if(s.luma>=p.inkFloor && std::abs(int(s.chromaU)-p.inkU)<=80 && std::abs(int(s.chromaV)-p.inkV)<=80)f->rawInk[i/64]|=bit;
-                if(s.luma<=p.blackLimit)f->blackBacking[i/64]|=bit;
+        // The grid above is bounded to 960 columns.
+        std::array<AnalysisLumaSample,960> row;
+        const int firstX=(roi.left+p.step-1)/p.step;
+        const int endX=(std::min)(p.width,(roi.right+p.step-1)/p.step);
+        for (int y=0; y<p.height; ++y) {
+            const int sy=p.sourceRows[size_t(y)];
+            if (sy<0 || sy>=source.height) {reason="invalid-row";return {};}
+            if (sy<roi.top || sy>=roi.bottom || firstX>=endX) continue;
+            if (samples>=budget) {reason="sample-budget";return {};}
+            const size_t count=(std::min)(size_t(endX-firstX),budget-samples);
+            if (!source.SampleRow(sy,firstX*p.step,p.step,row.data(),count)) {
+                reason="sample-failed";return {};
             }
+            for (size_t j=0; j<count; ++j) {
+                const auto& s=row[j];
+                const size_t i=size_t(y)*p.width+firstX+j;
+                const uint64_t bit=uint64_t(1)<<(i%64);
+                if (s.luma>=p.inkFloor && std::abs(int(s.chromaU)-p.inkU)<=80 &&
+                    std::abs(int(s.chromaV)-p.inkV)<=80) f->rawInk[i/64]|=bit;
+                if (s.luma<=p.blackLimit) f->blackBacking[i/64]|=bit;
+            }
+            samples+=static_cast<unsigned>(count);
+            if (count!=size_t(endX-firstX)) {reason="sample-budget";return {};}
         }
         // Coverage is deliberately bounded to sampledBounds, never whole raster.
         f->rawEvidenceComplete=false;return f;

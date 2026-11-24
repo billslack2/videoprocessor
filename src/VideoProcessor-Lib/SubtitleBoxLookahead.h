@@ -7,6 +7,7 @@
 #include <SubtitleLocalGlyphProof.h>
 #include <SubtitleBarStripClearance.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -2623,6 +2624,7 @@ public:
         auto fresh=std::make_shared<SubtitleInkSnapshot>(*preview.current.ink);
         const size_t words=(size_t(fresh->width)*fresh->height+63)/64;
         if(fresh->rawInk.size()!=words || fresh->blackBacking.size()!=words)return false;
+        std::array<AnalysisLumaSample,128> row;
         for(int line=0;line<m_result.lineCount && line<3;++line) {
             const auto& box=m_result.lineBounds[line];
             if(!box.Valid())return false;
@@ -2630,20 +2632,27 @@ public:
             const int right=(std::min)(fresh->width,(box.right+fresh->step-1)/fresh->step+1);
             const int top=(std::max)(0,box.top/fresh->step-1);
             const int bottom=(std::min)(fresh->height,(box.bottom+fresh->step-1)/fresh->step+1);
-            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x) {
-                if(m_referenceSamples>=65536) {m_referenceRefresh="budget";return false;}
-                AnalysisLumaSample pixel;
-                if(!source.Sample(x*fresh->step,fresh->sourceRows[y],pixel)) {
-                    m_referenceRefresh="sample-failed";return false;
+            for (int y=top; y<bottom; ++y) {
+                for (int x=left; x<right; ) {
+                    if (m_referenceSamples>=65536) {m_referenceRefresh="budget";return false;}
+                    const auto count=(std::min)({row.size(),size_t(right-x),size_t(65536-m_referenceSamples)});
+                    if (!source.SampleRow(fresh->sourceRows[y],x*fresh->step,fresh->step,row.data(),count)) {
+                        m_referenceRefresh="sample-failed";return false;
+                    }
+                    for (size_t j=0; j<count; ++j) {
+                        const auto& pixel=row[j];
+                        const size_t i=size_t(y)*fresh->width+x+j;
+                        const uint64_t bit=uint64_t(1)<<(i%64);
+                        const bool bright=pixel.luma>=palette.inkFloor &&
+                            std::abs(int(pixel.chromaU)-palette.inkU)<=80 &&
+                            std::abs(int(pixel.chromaV)-palette.inkV)<=80;
+                        fresh->rawInk[i/64]=(fresh->rawInk[i/64]&~bit)|(bright?bit:0);
+                        fresh->blackBacking[i/64]=(fresh->blackBacking[i/64]&~bit)|
+                            (pixel.luma<=palette.blackLimit?bit:0);
+                    }
+                    m_referenceSamples+=static_cast<unsigned>(count);
+                    x+=static_cast<int>(count);
                 }
-                ++m_referenceSamples;
-                const size_t i=size_t(y)*fresh->width+x;const uint64_t bit=uint64_t(1)<<(i%64);
-                const bool bright=pixel.luma>=palette.inkFloor &&
-                    std::abs(int(pixel.chromaU)-palette.inkU)<=80 &&
-                    std::abs(int(pixel.chromaV)-palette.inkV)<=80;
-                fresh->rawInk[i/64]=(fresh->rawInk[i/64]&~bit)|(bright?bit:0);
-                fresh->blackBacking[i/64]=(fresh->blackBacking[i/64]&~bit)|
-                    (pixel.luma<=palette.blackLimit?bit:0);
             }
         }
         // This uses the acquisition palette only to revalidate that caption.

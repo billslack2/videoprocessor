@@ -1,6 +1,7 @@
 #pragma once
 #include <MotionConfig.h>
 #include <vprenderer/FrameHdrStatus.h>
+#include <vprenderer/CompactHdrPeak.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/gpu.h>
 #include <libplacebo/shaders/custom.h>
@@ -91,6 +92,7 @@ private:
         NativePrepare nativePrepare;
         bool hasSubtitle=false;
         RendererHdrStatus hdrSource{};
+        CompactHdrPeak::Decision hdrPeak;
         bool hdrSourceAvailable=false;
         pl_dovi_metadata dovi{};
         pl_frame frame{};
@@ -170,9 +172,12 @@ public:
         result=lastHdrStatus;return lastHdrStatusAvailable;
     }
     bool AnnotateHdrSource(uint64_t sequence,const pl_frame& frame,
-        const DolbyVisionLuminanceStatus& dv={}) {
+        const DolbyVisionLuminanceStatus& dv={}, const CompactHdrPeak::Decision& peak={}) {
         if(history.empty()||history.back()->sequence!=sequence)return false;
         auto& packet=*history.back();
+        // The first decision is part of this packet's rendering contract.
+        // Later worker completions cannot change an already queued picture.
+        if(!packet.hdrSourceAvailable)packet.hdrPeak=peak;
         packet.hdrSource=FrameHdrStatus::Source(frame,sequence,dv);
         packet.hdrSourceAvailable=true;return true;
     }
@@ -421,6 +426,7 @@ public:
         else stored=std::make_unique<Stored>();
         stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
         stored->nativePrepare={};stored->hasSubtitle=false;stored->hdrSourceAvailable=false;
+        stored->hdrPeak={};
         stored->completeComposition=false;stored->completeOutput.valid=false;
         for(auto& field:stored->prepared)field.valid=false;
         for(auto& field:stored->processed)field.valid=false;
@@ -582,6 +588,9 @@ public:
         catch(...) { return false; }
         replacement->gpu=device;replacement->pts=prior.pts;replacement->sequence=prior.sequence;
         replacement->frame=completeRgb;
+        replacement->hdrSource=prior.hdrSource;
+        replacement->hdrSourceAvailable=prior.hdrSourceAvailable;
+        replacement->hdrPeak=prior.hdrPeak;
         replacement->frame.planes[0].texture=nullptr;
         replacement->frame.prev=nullptr;replacement->frame.next=nullptr;
         auto storage=input->params;storage.initial_data=nullptr;storage.user_data=nullptr;
@@ -947,10 +956,11 @@ public:
         // Preserve authored metadata before inference supplies fallback values.
         const auto hdrSource=packet.hdrSourceAvailable?packet.hdrSource:
             FrameHdrStatus::Source(input,packet.sequence);
+        auto processing=params;
+        CompactHdrPeak::Apply(packet.hdrPeak,input,processing);
         pl_frames_infer(sourceRenderer,&input,&destination);
         const float black[3]={0,0,0};
         pl_frame_clear(gpu,&destination,black);
-        auto processing=params;
         processing.frame_mixer=nullptr;
         processing.deinterlace_params=interlaced&&!nativeMode?&algorithm:nullptr;
         if(composition)processing.deband_params=nullptr; // Already done during normalization.
@@ -1007,6 +1017,7 @@ public:
         using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
         std::vector<Timestamp> timestamps;
         owned.reserve(entries.size());
+        bool allPacketsUseAlternatePeak=true;
         for(const auto& entry:entries) {
             const auto& packet=*history[entry.index];
             if(!packet.completeComposition)continue;
@@ -1014,6 +1025,9 @@ public:
                 selectedOutputGeometry?*selectedOutputGeometry:selected.presentation,
                 packet.presentation,source.crop))continue;
             auto frame=packet.frame;frame.crop=source.crop;frame.rotation=source.rotation;
+            allPacketsUseAlternatePeak &= packet.hdrPeak.replaceDetector;
+            if(params.peak_detect_params)
+                CompactHdrPeak::Apply(packet.hdrPeak.measurement,frame.color.hdr);
             owned.push_back(frame);signatures.push_back(packet.signature);
             timestamps.push_back(static_cast<Timestamp>(entry.offset));
         }
@@ -1032,6 +1046,7 @@ public:
         }
         sourceRendererCompleteMode=true;sourceRendererEpoch=epoch;
         auto rendering=params;
+        if(allPacketsUseAlternatePeak)rendering.peak_detect_params=nullptr;
         rendering.frame_mixer=mixer;
         rendering.deband_params=nullptr; // Native source preparation already did this.
         pl_frame_mix mix{};mix.num_frames=static_cast<int>(frames.size());
@@ -1050,7 +1065,7 @@ public:
             FrameHdrStatus::Source(selected.frame,selected.sequence);
         // Keep the authored selected-source identity, but label detector state
         // as belonging to the library render/mix rather than that source alone.
-        lastHdrStatus=FrameHdrStatus::Capture(authored,sourceRenderer,params.peak_detect_params!=nullptr);
+        lastHdrStatus=FrameHdrStatus::Capture(authored,sourceRenderer,rendering.peak_detect_params!=nullptr);
         lastHdrStatus.detectedFromMix=true;
         lastHdrStatusAvailable=true;
         return true;

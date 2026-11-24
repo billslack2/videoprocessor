@@ -9,6 +9,7 @@
 #include <magewell/MagewellRgb24Packing.h>
 #include <DolbyVisionTunnelInput.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <vprenderer/CompactHdrPeak.h>
 #include <vprenderer/AlphaQueuePolicy.h>
 #include "MagewellSdkTestAccess.h"
 #include "DolbyVisionTunnelTestSender.h"
@@ -1804,6 +1805,55 @@ namespace Tests
 			Assert::AreEqual(512, static_cast<int>(blackSample.chromaU));
 			Assert::AreEqual(512, static_cast<int>(whiteSample.chromaV));
 		}
+
+        TEST_METHOD(MagewellR10lCompactPeakUsesLimitedRgbCodes)
+        {
+            DWORD fourcc=0;
+            VideoFrameEncoding encoding=VideoFrameEncoding::UNKNOWN;
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,10,
+                {MWFOURCC_RGB10},fourcc,encoding);
+            Assert::IsTrue(encoding==VideoFrameEncoding::R10l);
+
+            const auto rgb=[](uint32_t red,uint32_t green,uint32_t blue) {
+                return red|(green<<10)|(blue<<20);
+            };
+            const auto black=rgb(64,64,64);
+            std::array<uint32_t,4> input{rgb(32,32,32),black,rgb(502,502,502),rgb(940,940,940)};
+            auto packed=std::make_shared<std::array<uint8_t,256>>();
+            const auto repack=[&] {
+                MagewellCaptureTestAccess::RepackRgb(
+                    reinterpret_cast<const uint8_t*>(input.data()),16,packed->data(),256,4,1);
+            };
+            repack();
+            AnalysisLumaSource source{packed->data(),packed->size(),4,1,256,0,
+                AnalysisLumaFormat::NativeRgb,encoding,ColorSpace::BT_2020,1};
+            source.backingOwner=packed;
+            source.range=AnalysisLumaRange::Limited;
+            pl_frame frame{};
+            frame.color=pl_color_space_hdr10;
+            frame.repr=pl_color_repr_rgb;
+            frame.repr.levels=PL_COLOR_LEVELS_LIMITED;
+            Assert::IsTrue(CompactHdrPeak::Supports(source,frame));
+
+            const auto gray=CompactHdrPeak::Measure(source);
+            Assert::AreEqual(2u,gray.samples);
+            Assert::AreEqual(1.0f,gray.peakPq,0.0001f);
+            Assert::AreEqual(0.75f,gray.averagePq,0.0001f);
+
+            input={black,black,black,rgb(64,940,64)};
+            repack();
+            const auto green=CompactHdrPeak::Measure(source);
+            Assert::AreEqual(1u,green.samples);
+            Assert::AreEqual(10000.0f,green.peakRgbNits,0.1f);
+            Assert::AreEqual(pl_hdr_rescale(PL_HDR_NITS,PL_HDR_PQ,6780.0f),
+                green.peakPq,0.0001f);
+
+            frame.repr.levels=PL_COLOR_LEVELS_FULL;
+            Assert::IsFalse(CompactHdrPeak::Supports(source,frame));
+            frame.repr.levels=PL_COLOR_LEVELS_LIMITED;
+            frame.color.transfer=PL_COLOR_TRC_HLG;
+            Assert::IsFalse(CompactHdrPeak::Supports(source,frame));
+        }
 
 		TEST_METHOD(P210ToV210PreservesSixPixelGroup)
 		{

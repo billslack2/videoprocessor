@@ -33,6 +33,16 @@ enum class AlphaSourceReleaseReason
 	GenerationReset
 };
 
+struct AlphaPreviewQueueState
+{
+	uint64_t headSource = 0;
+	size_t depth = 0;
+	size_t target = 0;
+	bool startupPrefill = false;
+	const char* depthGate = "unobserved";
+	const char* conversionGate = "unobserved";
+};
+
 struct AlphaPreRenderTimings
 {
 	double previewWaitMs = 0.0;
@@ -40,6 +50,9 @@ struct AlphaPreRenderTimings
 	double previewLockMs = 0.0;
 	double previewEligibilityMs = -1.0;
 	double previewResumeMs = -1.0;
+	AlphaPreviewQueueState previewWaitStart;
+	AlphaPreviewQueueState previewWake;
+	const char* previewReleaseEvent = nullptr;
 	double dequeueWaitMs = 0.0;
 	double lookaheadMs = 0.0;
     double lookaheadBudgetMs = 0.0;

@@ -107,6 +107,22 @@ namespace
 		return static_cast<uint16_t>(std::max(0, std::min(1023, value)));
 	}
 
+	AnalysisLumaSample SampleFullRgb10(uint16_t red, uint16_t green, uint16_t blue, bool bt2020)
+	{
+		const int yRed = bt2020 ? 17218 : 13933;
+		const int yGreen = bt2020 ? 44444 : 46871;
+		const int yBlue = bt2020 ? 3886 : 4732;
+		const int cbRed = bt2020 ? -9147 : -7508;
+		const int cbGreen = bt2020 ? -23621 : -25259;
+		const int crGreen = bt2020 ? -30134 : -29763;
+		const int crBlue = bt2020 ? -2634 : -3005;
+		return {
+			Clamp10((yRed * red + yGreen * green + yBlue * blue + 32768) >> 16),
+			Clamp10(((cbRed * red + cbGreen * green + 32768 * blue + 32768) >> 16) + 512),
+			Clamp10(((32768 * red + crGreen * green + crBlue * blue + 32768) >> 16) + 512),
+		};
+	}
+
 	struct LimitedRgbCoefficients
 	{
 		int32_t yR, yG, yB;
@@ -408,6 +424,47 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)
 		return false;
+	return SampleValidated(x, y, result);
+}
+
+bool AnalysisLumaSource::SampleNativeRgb10(int x, int y, uint16_t& red,
+    uint16_t& green, uint16_t& blue) const
+{
+    if (format != AnalysisLumaFormat::NativeRgb || !IsValid() ||
+        x < 0 || y < 0 || x >= width || y >= height)
+        return false;
+    return ReadRgb10(*this, x, y, red, green, blue);
+}
+
+bool AnalysisLumaSource::SampleRow(int y, int x, int step, AnalysisLumaSample* samples, size_t count) const
+{
+	if (!samples || !count || step <= 0 || x < 0 || x >= width || y < 0 || y >= height ||
+		count - 1 > static_cast<size_t>((width - 1 - x) / step) || !IsValid())
+		return false;
+
+	if (format == AnalysisLumaFormat::NativeRgb &&
+		(encoding == VideoFrameEncoding::BGRA_8BIT || encoding == VideoFrameEncoding::ARGB_8BIT))
+	{
+		const auto* row = data + static_cast<size_t>(y) * rowBytes;
+		const bool bgra = encoding == VideoFrameEncoding::BGRA_8BIT;
+		const bool bt2020 = colorspace == ColorSpace::BT_2020;
+		for (size_t i = 0; i < count; ++i)
+		{
+			const auto* pixel = row + (static_cast<size_t>(x) + i * step) * 4;
+			samples[i] = SampleFullRgb10(Expand8To10(pixel[bgra ? 2 : 1]),
+				Expand8To10(pixel[bgra ? 1 : 2]), Expand8To10(pixel[bgra ? 0 : 3]), bt2020);
+		}
+		return true;
+	}
+
+	for (size_t i = 0; i < count; ++i)
+		if (!SampleValidated(x + static_cast<int>(i) * step, y, samples[i]))
+			return false;
+	return true;
+}
+
+bool AnalysisLumaSource::SampleValidated(int x, int y, AnalysisLumaSample& result) const
+{
 	if (format != AnalysisLumaFormat::NativeRgb &&
 		format != AnalysisLumaFormat::SdrTunnelRgb)
 	{
@@ -481,18 +538,7 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 			static_cast<int64_t>(coefficients.crB) * b));
 		return true;
 	}
-	const int yRed = bt2020 ? 17218 : 13933;
-	const int yGreen = bt2020 ? 44444 : 46871;
-	const int yBlue = bt2020 ? 3886 : 4732;
-	const int cbRed = bt2020 ? -9147 : -7508;
-	const int cbGreen = bt2020 ? -23621 : -25259;
-	const int cbBlue = 32768;
-	const int crRed = 32768;
-	const int crGreen = bt2020 ? -30134 : -29763;
-	const int crBlue = bt2020 ? -2634 : -3005;
-	result.luma = Clamp10((yRed * red + yGreen * green + yBlue * blue + 32768) >> 16);
-	result.chromaU = Clamp10(((cbRed * red + cbGreen * green + cbBlue * blue + 32768) >> 16) + 512);
-	result.chromaV = Clamp10(((crRed * red + crGreen * green + crBlue * blue + 32768) >> 16) + 512);
+	result = SampleFullRgb10(red, green, blue, bt2020);
 	return true;
 }
 

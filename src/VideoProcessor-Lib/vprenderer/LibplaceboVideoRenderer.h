@@ -239,11 +239,12 @@ private:
 	void ClearQueueLocked(const char* reason);
 	size_t PrefillTargetLocked() const;
 	bool CanDequeueLocked() const;
-	void ObservePreviewEligibilityLocked();
+	void ObservePreviewEligibilityLocked(const char* event);
 	// Only armed while the render thread is waiting. Protected by m_queueMutex.
 	bool m_previewWaiting = false;
 	uint64_t m_previewEligibleSource = 0;
 	int64_t m_previewEligibleNs = 0;
+	const char* m_previewEligibleEvent = nullptr;
 	void SetState(RendererState state);
 	void ApplyViewportTarget(bool configured, double aspect,
 		const char* reason);

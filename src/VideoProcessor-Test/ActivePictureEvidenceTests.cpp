@@ -647,6 +647,55 @@ namespace VideoProcessorTest
             Assert::IsTrue(evidence.trustedBounds.bottom >= 314 && evidence.trustedBounds.bottom <= 316,
                 bounds.c_str());
         }
+        TEST_METHOD(StridedRowMatchesIndividualSamplesOnCurrentSource)
+        {
+            constexpr int width = 32, height = 6, stride = width * 4 + 12;
+            std::array<uint8_t, stride * height> rgb{};
+            for (size_t i = 0; i < rgb.size(); ++i)
+                rgb[i] = static_cast<uint8_t>((i * 137) ^ (i / 7));
+
+            P010Frame planar(width, height);
+            planar.Fill(300, 104, 702);
+            planar.FillRectangle(3, 1, 10, 5, 900);
+            AnalysisLumaSource packed;
+            packed.data = rgb.data();
+            packed.dataBytes = rgb.size();
+            packed.width = width;
+            packed.height = height;
+            packed.rowBytes = stride;
+            packed.format = AnalysisLumaFormat::NativeRgb;
+
+            const auto check = [](const AnalysisLumaSource& source) {
+                std::array<AnalysisLumaSample, 8> batch{};
+                for (int step : { 1, 2, 4 }) {
+                    for (int y = 0; y < source.height; ++y) {
+                        Assert::IsTrue(source.SampleRow(y, 3, step, batch.data(), batch.size()));
+                        for (size_t i = 0; i < batch.size(); ++i) {
+                            AnalysisLumaSample single;
+                            Assert::IsTrue(source.Sample(3 + static_cast<int>(i) * step, y, single));
+                            Assert::AreEqual(single.luma, batch[i].luma);
+                            Assert::AreEqual(single.chromaU, batch[i].chromaU);
+                            Assert::AreEqual(single.chromaV, batch[i].chromaV);
+                        }
+                    }
+                }
+                Assert::IsFalse(source.SampleRow(0, 4, 4, batch.data(), batch.size()));
+                Assert::IsFalse(source.SampleRow(source.height, 0, 1, batch.data(), batch.size()));
+                Assert::IsFalse(source.SampleRow(0, 0, 0, batch.data(), batch.size()));
+                auto invalid = source;
+                invalid.dataBytes = 1;
+                Assert::IsFalse(invalid.SampleRow(0, 0, 1, batch.data(), batch.size()));
+            };
+            check(planar.P010Source());
+            for (auto encoding : { VideoFrameEncoding::BGRA_8BIT, VideoFrameEncoding::ARGB_8BIT }) {
+                packed.encoding = encoding;
+                for (auto space : { ColorSpace::BT_2020, ColorSpace::UNKNOWN }) {
+                    packed.colorspace = space;
+                    check(packed);
+                }
+            }
+        }
+
         TEST_METHOD(LowCodeOpposingBoundaryRecoversSymmetricPictureAcrossNativeFormats)
         {
             for (int format = 0; format < 3; ++format)
