@@ -162,8 +162,8 @@ private:
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
     void migrateOutputDisplayProfiles();
-    void migrateSeparatedRendererProfiles();
-    void migrateProcessingToScaling();
+    void migrateSeparatedRendererProfiles(const QStringList& movedScalingProfiles);
+    QStringList migrateProcessingToScaling();
     void migrateUnifiedColorOutputProfiles();
     void migrateCalibrationProfiles();
     void migrateViewportZoomProfiles();
@@ -329,6 +329,7 @@ private:
     // Rendering / DTM: before Save or Apply, writes every rendering profile's
     // settings explicitly so none inherits from the default profile.
     std::function<void()> freezeRenderingProfiles_;
+    std::function<QString(const QString&, const QString&)> frozenRenderingValue_;
     struct RendererAutoStatusBinding
     {
         QString sectionPrefix;
