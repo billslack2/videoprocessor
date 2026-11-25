@@ -55,6 +55,14 @@ The isolated `E:\codex\videoprocessor\vp0240-smooth-motion-baseline-d5f69645\art
 
 In the stock progressive Smooth Motion path, a controlled case reused a single HDR source render across four output presentations. The compact peak worker instead throttles by wall time and has no distinct-source check at submit, and the processed source cache can miss after presentation context changes. The live run has yet to establish whether either condition caused repeated measurement on the reported scene. Keep the viewport unchanged as HDR peak analysis is introduced in a later controlled pass.
 
+## Beta direct-output Smooth Motion trial
+
+Following the Smooth Motion-only rollback, the engineering review approved an isolated A/B of the final mix pass. The public libplacebo change `1733c8601edec161b714e4a799c72a9f5e5aa2f0`, present in the bundled Beta fork, already blends in linear light and encodes the output transfer. It retains the overlay transfer contract. VP keeps its processed source cache, admitted geometry and output cadence. The opt-in Beta progressive path draws the existing mix directly to the acquired destination with the same output options. Stable, interlaced and advanced-subtitle composition retain their established output paths.
+
+The source branch is `trial/vp0240-beta-direct-mix` under `E:\codex\videoprocessor\vp0240-beta-direct-mix-20261125`, based on verified official beta `d5f69645f4c818559d627d68eced177489c159d5` with bundled libplacebo `a89f8241bfd6c5f5affaa9c3ce39fa2b1767b8c7`. The isolated Release build `f2c27eea574f3e82fe15371a8c26388c831991d4` is under `artifacts\Smooth Motion AB f2c27eea574f`. The two folders ship the same executable, renderer, settings and diagnostics, with the same-source Config and output probe. The launch environment selects the path. Both start with Smooth Motion Auto, Scope, subtitles Off, and HDR peak detection Off. All 26 focused tests passed. Both packages had 125 matching payload hashes and their Config apps started offline. The launch switch was the only payload difference.
+
+The D3D11 regression requires two actual mix contributors and checks the 10-bit output, border, translucent target overlay and fractional viewport across its tested output contracts. The exact HDMI replay, physical presentation gaps, and hardware timing remain open. Compare steady scope and the reported hard cut at 23.976 to 59.95 Hz, with cold and warmed caches measured separately. Keep HDR measurement attribution separate. The active installation was untouched.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
