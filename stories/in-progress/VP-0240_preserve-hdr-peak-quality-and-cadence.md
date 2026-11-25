@@ -20,6 +20,13 @@ Keep the half-resolution advanced-subtitle variant gated on full-resolution timi
 - The 31 focused VP native HDR, dependency and Smooth Motion regressions passed on each isolated libplacebo DLL. Broader native suite runs did not finish in this qualification. The earlier beta baseline had 23 already reproduced failures (22 AR and one LUT), so there is no new full-suite result or claim of clearing those cases.
 - The matching live HDMI comparison, advanced-subtitle half-resolution experiment, and worst-case render and presentation measurements remain open. The active install was untouched. The isolated launchers and verification artifacts are under `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125\artifacts`.
 
+## Advanced subtitles at 23.976/24 fps
+
+The user confirmed that the performance problem also occurs at 24 fps. The new opt-in x64 Release trial on `trial/vp0240-advanced-subtitle-histogram` at `3feabef84145bd76504f2fe8ebfb77fce3455488` uses fork `0165c292419cff816c39493053a6583b149da3f5`. It measures alternate distinct direct HDR sources when an advanced subtitle mode is active, including at 23.976/24 fps, and retains the native full-density histogram on measurement frames. The matched control attempts every direct source at 24 fps. Both modes reuse completed D3D11 staging resources and use authored or static data if compatible measurements are unavailable. Active temporal mixing still uses the native path and remains open for separate source-keyed optimization.
+
+The separate fused 2x2 linear-light experiment passed ROI and tile-statistic checks. In a warmed synthetic 4K run, its 0.876 ms mean and 1.277 ms worst were no improvement over 0.865 ms mean and 0.899 ms worst for full density, so the trial uses full density. With reusable readback, alternate cadence issued 12 histograms across 24 synthetic 4K renders, versus 24 from the full cadence control. Both had a compatible measurement for all 24 renders. Mean end-to-end off-screen timing was 0.736 vs 0.814 ms and worst was 0.891 vs 0.998 ms. The timing includes a GPU finish in the fixture and is separate from actual HDMI or subtitle compositing cost. All 15 fork Release tests and 31 focused VP tests passed. The staged launcher pair and SHA-256 manifest are under `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125\artifacts\advanced-subtitles-3feabef84145`. The native HDMI test with dense advanced subtitles and actual presentation gaps remains open.
+
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
