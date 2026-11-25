@@ -2,7 +2,9 @@
 
 ## Status
 
-Backlog
+In Progress
+
+Source branch `trial/vp0240-libplacebo-histogram` in `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125` starts at verified beta `d5f69645f4c818559d627d68eced177489c159d5`. Building the opt-in original histogram reference and full-rate delayed control first. Astra verified that delayed libplacebo on D3D11 can still force readback. True half cadence requires retaining native state and polling readback without waiting. No live evidence yet.
 
 ## Context
 
