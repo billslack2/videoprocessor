@@ -47,6 +47,14 @@ The user reported scope shrinking with bars on all four sides in `063d3f2155aa`.
 
 The failed run's diagnostic capture was metadata-only. The exact HDMI sequence, a pending raw caption wholly below the admitted crop, and actual presentation timing still require live verification. The failed run recorded zero temporal histogram submissions and is insufficient to evaluate HDR performance. The active installation was untouched.
 
+## Restart from the Smooth Motion baseline
+
+The user reported an unacceptable AR transition during the combined follow-up and requested a return to the starting point with Smooth Motion isolated. The next test uses the verified official `v2.0.10-beta` tip `d5f69645f4c818559d627d68eced177489c159d5` and its bundled libplacebo `a89f8241bfd6c5f5affaa9c3ce39fa2b1767b8c7`. The prior HDR histogram and caption trials are paused. No active deployment was changed.
+
+The isolated `E:\codex\videoprocessor\vp0240-smooth-motion-baseline-d5f69645\artifacts\Smooth Motion Only` configuration keeps the previous Scope viewport and Smooth Motion Auto. The two settings changes are subtitles Off and peak detection Off for the current Low Cinema Filter 16x9 profile. HDR tone mapping remains enabled. The package includes same-source x64 Release Config and probe. All 125 package hashes matched, Config opened offline, and all 10 focused baseline tests passed. The original HDMI transition remains to be replayed.
+
+In the stock progressive Smooth Motion path, a controlled case reused a single HDR source render across four output presentations. The compact peak worker instead throttles by wall time and has no distinct-source check at submit, and the processed source cache can miss after presentation context changes. The live run has yet to establish whether either condition caused repeated measurement on the reported scene. Keep the viewport unchanged as HDR peak analysis is introduced in a later controlled pass.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
