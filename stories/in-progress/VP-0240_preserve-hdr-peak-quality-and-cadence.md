@@ -39,6 +39,14 @@ The separately launched broad subtitle/motion suite with the bundled dependency 
 
 Keep the story in progress for the matched HDMI comparison. The live 16.68 ms budget, worst source and presentation gaps, maximum measurement age, HDR glyph brightness and edge scaling, small highlights, and the previous Dolby Vision caption flicker remain unverified. The windowed telemetry records the latest eligible and measured packet IDs and counters. The active installation was untouched.
 
+## Scope framing regression in the first Smooth Motion trial
+
+The user reported scope shrinking with bars on all four sides in `063d3f2155aa`. In its 14:03:59 and 14:04:15 submitted-geometry records, the selected packet had already admitted crop `10,266–3830,1892`. The trial replaced it with the full `3840×2160` capture raster and reduced output width from approximately 1,999 to 1,513 pixels. Both were mode 3 with a successfully composed subtitle. A guard treated the padded subtitle layer as a reason to refit the entire capture. Encoded top and bottom bars then remained inside the narrower picture.
+
+`2a16d013b3a6577376010f5eff282470b26e4a24` removes the post-admission framing override. Clean and pending packets use the existing viewport mapping. The cue layer clips to that mapping, and an attempted cue overlay can fall back to the existing selected-packet composition. Astra agreed to this scope. A focused GPU case exercises a known scope crop with a padded layer extending outside it and checks both picture edges and the selected visible glyph. The corrected x64 Release package under `artifacts\trial-2a16d013b3a6` supersedes the first trial and includes matching Config, output probe, and exact hashes. All 56 focused tests passed with the exact trial DLL. All 133 package hashes matched and Config started offline.
+
+The failed run's diagnostic capture was metadata-only. The exact HDMI sequence, a pending raw caption wholly below the admitted crop, and actual presentation timing still require live verification. The failed run recorded zero temporal histogram submissions and is insufficient to evaluate HDR performance. The active installation was untouched.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
