@@ -349,6 +349,61 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(allTop)result.pictureTop=(std::max)(result.pictureTop,current.barEvidence.top);
         else result.pictureBottom=(std::min)(result.pictureBottom,current.barEvidence.bottom);
     }
+    // The shared subtitle plane can include two dim transition rows. On
+    // frames with a current independent edge, verify the same strip before
+    // discarding a matching outline as detached from the picture boundary.
+    // On local-glyph frames this proof can only narrow the cleanup interval.
+    const bool physicalClipMatchesOutline=boundedOutline && cueSideCurrent && sharedPhysicalNear &&
+        candidate->fromTopBar==allTop && (allTop?
+            result.pictureTop-current.pictureTop==2 && result.pictureTop==candidate->pictureTop:
+            current.pictureBottom-result.pictureBottom==2 && result.pictureBottom==candidate->pictureBottom);
+    bool transitionRowsVerified=false;
+    if((sharedCueSide || physicalClipMatchesOutline) && edgeStep>=4) {
+        const int edge=allTop?current.pictureTop:current.pictureBottom;
+        const int direction=allTop?1:-1;
+        const int startY=allTop?edge:edge-1;
+        const int blackFloor=sharedCueSide?current.glyphLocalBlackFloor:
+            (allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor);
+        const int margin=2*SubtitleTypicalLineHeight(acceptedForProof);
+        const int leftEnd=glyphs.left-margin,rightStart=glyphs.right+margin;
+        if(blackFloor>=0 && blackFloor<=96 && leftEnd>=source.width/8 &&
+            source.width-rightStart>=source.width/8 && startY-direction>=0 &&
+            startY-direction<source.height && startY+3*direction>=result.pictureTop &&
+            startY+3*direction<result.pictureBottom) {
+            constexpr int flankSamples=24;
+            int skirtSupport[2]={},pictureSupport[2]={};
+            for(int side=0;side<2;++side)for(int i=0;i<flankSamples;++i) {
+                const int flankStart=side?rightStart:0;
+                const int flankWidth=side?source.width-rightStart:leftEnd;
+                const int x=flankStart+(2*i+1)*flankWidth/(2*flankSamples);
+                AnalysisLumaSample outside,edgeRow,innerTransitionRow,inside;
+                if(!spend() || !source.Sample(x,startY-direction,outside) ||
+                    !spend() || !source.Sample(x,startY,edgeRow) ||
+                    !spend() || !source.Sample(x,startY+direction,innerTransitionRow) ||
+                    !spend() || !source.Sample(x,startY+2*direction,inside))
+                    return reject("lip-transition-edge-sample-unavailable");
+                if(outside.luma>blackFloor+12 || edgeRow.luma>blackFloor+16 ||
+                    innerTransitionRow.luma>blackFloor+18)continue;
+                ++skirtSupport[side];
+                const int pictureMinimum=(std::max)(blackFloor+24,int(innerTransitionRow.luma)+16);
+                if(inside.luma<pictureMinimum)continue;
+                AnalysisLumaSample adjacentPicture;
+                if(!spend() || !source.Sample(x,startY+3*direction,adjacentPicture))
+                    return reject("lip-transition-edge-sample-unavailable");
+                pictureSupport[side]+=adjacentPicture.luma>=pictureMinimum;
+            }
+            // The skirt must extend across both flanks. Picture support may
+            // be asymmetric in a dark scene, but must occur on both sides
+            // and persist into the adjacent picture row.
+            transitionRowsVerified=skirtSupport[0]>=7*flankSamples/8 &&
+                skirtSupport[1]>=7*flankSamples/8 && pictureSupport[0]>=flankSamples/4 &&
+                pictureSupport[1]>=flankSamples/4 && pictureSupport[0]+pictureSupport[1]>=flankSamples-2;
+            if(transitionRowsVerified && sharedCueSide) {
+                if(allTop)result.pictureTop+=2;
+                else result.pictureBottom-=2;
+            }
+        }
+    }
     const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
         current,allTop,source,policy,continuity);
     // A current independently measured edge can vary by one native analysis
@@ -493,8 +548,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         composition->pictureBottom<=source.height && composition->pictureTop<composition->pictureBottom &&
         (allTop?composition->pictureTop<=candidate->pictureTop:
             composition->pictureBottom>=candidate->pictureBottom);
+    const int expansionTop=current.pictureTop+(allTop && transitionRowsVerified?2:0);
+    const int expansionBottom=current.pictureBottom-(!allTop && transitionRowsVerified?2:0);
     const bool candidateEdgeExpanded=boundedOutline && (allTop?
-        current.pictureTop<candidate->pictureTop:current.pictureBottom>candidate->pictureBottom);
+        expansionTop<candidate->pictureTop:expansionBottom>candidate->pictureBottom);
     if(candidateCueSideWithinTolerance && candidateEdgeExpanded && compositionContainsRememberedEdge) {
         // Prove the short strip between the remembered edge and the expanded
         // current edge from source pixels. Exclude the remembered card's full
@@ -531,10 +588,14 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         if(pictureSideBright<edgeProbeCount/2 || supportedBins<4)
             return reject("lip-outline-edge-picture-support-unavailable");
 
-        const int extensionTop=allTop?current.pictureTop:candidate->pictureBottom;
-        const int extensionBottom=allTop?candidate->pictureTop:current.pictureBottom;
+        const int extensionTop=allTop?expansionTop:candidate->pictureBottom;
+        const int extensionBottom=allTop?candidate->pictureTop:expansionBottom;
+        // The strip uses the unadjusted observation edge. Current physical
+        // evidence may already have clipped result to the remembered edge,
+        // reducing candidateEdgeDelta to zero while this strip still exists.
+        const int64_t maxExtensionRows=(std::max)(int64_t(3),candidateEdgeDelta);
         if(extensionTop<0 || extensionBottom>source.height || extensionTop>=extensionBottom ||
-            extensionBottom-extensionTop>candidateEdgeDelta)
+            extensionBottom-extensionTop>maxExtensionRows)
             return reject("lip-outline-edge-expansion-invalid");
         for(int y=extensionTop;y<extensionBottom;++y) {
             unsigned barLike=0;
@@ -702,13 +763,21 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         // later rows remain bounded by the measured monotone card outline.
         if(!rows && (left>glyphs.left || right<glyphs.right))
             return reject("lip-black-span-does-not-cover-glyphs");
-        bool finiteFlanks=true;
-        for(int distance=0;distance<3;++distance){
+        // A separated dark pixel in the exterior collar is not part of the
+        // card. Require three bright neighbors on each side and keep the
+        // scanned body interval exact, including on the transition path.
+        const int flankDepth=transitionRowsVerified?4:3;
+        if(left<flankDepth || right>source.width-flankDepth)
+            return reject("lip-flank-unavailable");
+        int leftBright=0,rightBright=0;
+        for(int distance=0;distance<flankDepth;++distance){
             AnalysisLumaSample a,b;
             if(!sample(left-1-distance,y,a) || !sample(right+distance,y,b))break;
-            finiteFlanks &= a.luma>darkLimit && b.luma>darkLimit;
+            leftBright+=a.luma>darkLimit;
+            rightBright+=b.luma>darkLimit;
         }
         if(exhausted || failedRead)break;
+        const bool finiteFlanks=leftBright>=3 && rightBright>=3;
         if(!finiteFlanks){
             // Only the raster row immediately adjoining the physical bar may
             // touch unrelated scene black. It supplies no horizontal envelope.

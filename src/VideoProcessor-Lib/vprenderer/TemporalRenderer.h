@@ -957,7 +957,7 @@ public:
         const auto hdrSource=packet.hdrSourceAvailable?packet.hdrSource:
             FrameHdrStatus::Source(input,packet.sequence);
         auto processing=params;
-        CompactHdrPeak::Apply(packet.hdrPeak,input,processing);
+        CompactHdrPeak::Apply(packet.hdrPeak,input,destination.color,processing);
         pl_frames_infer(sourceRenderer,&input,&destination);
         const float black[3]={0,0,0};
         pl_frame_clear(gpu,&destination,black);
@@ -1025,8 +1025,9 @@ public:
                 selectedOutputGeometry?*selectedOutputGeometry:selected.presentation,
                 packet.presentation,source.crop))continue;
             auto frame=packet.frame;frame.crop=source.crop;frame.rotation=source.rotation;
-            allPacketsUseAlternatePeak &= packet.hdrPeak.replaceDetector;
-            if(params.peak_detect_params)
+            const bool alternatePeak=CompactHdrPeak::ReplacesDetector(packet.hdrPeak,frame.color,target.color);
+            allPacketsUseAlternatePeak &= alternatePeak;
+            if(params.peak_detect_params && alternatePeak)
                 CompactHdrPeak::Apply(packet.hdrPeak.measurement,frame.color.hdr);
             owned.push_back(frame);signatures.push_back(packet.signature);
             timestamps.push_back(static_cast<Timestamp>(entry.offset));

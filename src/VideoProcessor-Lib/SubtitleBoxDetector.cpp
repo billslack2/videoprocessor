@@ -27,6 +27,71 @@ namespace
             std::max(a.right,b.right), std::max(a.bottom,b.bottom) };
     }
     int Bits(uint64_t x) { int n=0; while(x) { x &= x-1; ++n; } return n; }
+    // The retained crop can cut through active picture. Find a finite dark
+    // caption backing inside the discarded strip before grouping bright ink.
+    // This inexpensive row scan supplies a search window only. The real
+    // current pixels still have to pass the owned glyph/backing proof.
+    SubtitleBoxRect FindDiscardedBottomCard(const AnalysisLumaSource& source, int bottom, int step)
+    {
+        constexpr int maxColumns = 480;
+        const int stride = (std::max)(step,(source.width+maxColumns-1)/maxColumns);
+        const int columns = (source.width+stride-1)/stride;
+        const int darkLimit = source.range == AnalysisLumaRange::Full ? 24 : 88;
+        const int minWidth = (std::max)(5,columns/20);
+        const int minHeight = (std::max)(3*step,source.height/100);
+        const int maxHeight = (std::min)(source.height/7,source.height-bottom);
+        std::array<AnalysisLumaSample,maxColumns> row{};
+        std::array<SubtitleBoxRect,540> edges{};
+        size_t count=0;
+        for (int y=bottom; y<source.height && count<edges.size(); y+=step)
+        {
+            if (!source.SampleRow(y,0,stride,row.data(),columns)) return {};
+            int left=columns/2;
+            int right=left;
+            if (row[left].luma>darkLimit) continue;
+            while (left>0 && row[left-1].luma<=darkLimit) --left;
+            while (right<columns && row[right].luma<=darkLimit) ++right;
+            if (left<2 || right>columns-2 || right-left<minWidth ||
+                right-left>columns*4/5 || std::abs(left+right-columns)>columns/8)
+                continue;
+            edges[count++]={left*stride,y,right*stride,y+step};
+        }
+        SubtitleBoxRect best;
+        int bestArea=0;
+        for (size_t first=0; first<count; ++first)
+        {
+            const auto& top=edges[first];
+            const int tolerance=(std::max)(2*stride,Width(top)/24);
+            for (size_t last=first+1; last<count; ++last)
+            {
+                const auto& end=edges[last];
+                const int height=end.bottom-top.top;
+                if (height<minHeight) continue;
+                if (height>maxHeight) break;
+                if (std::abs(top.left-end.left)>tolerance || std::abs(top.right-end.right)>tolerance)
+                    continue;
+                const SubtitleBoxRect card{(std::max)(top.left,end.left),top.top,
+                    (std::min)(top.right,end.right),(std::min)(source.height,end.bottom)};
+                const int area=Width(card)*Height(card);
+                if (area<=bestArea) continue;
+                unsigned supported=0;
+                for (int sample=1; sample<6; ++sample)
+                {
+                    const int y=card.top+Height(card)*sample/6;
+                    AnalysisLumaSample left,right,outsideLeft,outsideRight;
+                    supported += source.Sample(card.left+stride,y,left) &&
+                        source.Sample(card.right-2*stride,y,right) &&
+                        source.Sample(card.left-3*stride,y,outsideLeft) &&
+                        source.Sample(card.right+2*stride,y,outsideRight) &&
+                        left.luma<=darkLimit && right.luma<=darkLimit &&
+                        (outsideLeft.luma>darkLimit+12 || outsideRight.luma>darkLimit+12);
+                }
+                if (supported>=4) { best=card;bestArea=area; }
+            }
+        }
+        return best;
+    }
+
     constexpr int CardBoundaryUncertainty=3;
     bool HasBoundaryGlyphCore(const AnalysisLumaSource& source,int x,int y,
         const SubtitleBoxRect& interior,int threshold,int inkU,int inkV,
@@ -116,6 +181,8 @@ int SubtitleBoxDetector::SamplingStep(int width, int height)
 
 void SubtitleBoxDetector::Reset()
 {
+    m_discardedCard={};
+    m_discardedSamples.clear();m_currentDiscardedSamples.clear();
     m_sampledRows.clear();m_sharedSampleCount=0;
     m_inkSnapshot.reset();
     m_result = {}; m_currentBarAnchor = {}; m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {}; m_signature = {}; m_currentAnchorSignature = {};
@@ -128,8 +195,9 @@ void SubtitleBoxDetector::Reset()
 
 bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTop,
     int pictureBottom, SubtitleBoxRect& box, int& lineCount,
-    std::array<uint64_t,16>& signature, int nearBarDistance)
+    std::array<uint64_t,16>& signature, int nearBarDistance, const SubtitleBoxRect* discardedCard)
 {
+    const bool discardedBottomOnly=discardedCard!=nullptr;
     ++m_diagnostics.detectPasses;
     SubtitleDiagnosticElapsedScope diagnosticElapsed{m_diagnostics.detectElapsedMs,m_diagnostics.detectPeakMs};
     // Inspect every source frame. Spatial sampling bounds cost without an idle
@@ -163,7 +231,11 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // below, rather than by widening the whole-frame search for every cue.
     const int depth = std::max(24, h / 7)+(nearBarDistance+step-1)/step;
     int topEnd = pictureTop > 0 ? std::min(h,top+depth) : 0;
-    int bottomStart = pictureBottom < source.height ? std::max(0,bottom-depth) : h;
+    // While VP holds a presentation crop over full-height picture, only
+    // inspect the rows the crop would discard. Picture detail on the
+    // retained side cannot compete with the caption for grouping.
+    int bottomStart = discardedBottomOnly ? bottom :
+        pictureBottom < source.height ? std::max(0,bottom-depth) : h;
     const int normalTopEnd=topEnd,normalBottomStart=bottomStart;
     const size_t area = static_cast<size_t>(w)*h;
     m_luma.resize(area); m_chroma.resize(area); m_mask.assign(area,0);
@@ -186,6 +258,16 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 (pictureBottom < source.height && y == bottom ? pictureBottom :
                     std::min(source.height-1,y*step));
             uint16_t luma=0, u=512, v=512;
+            // Ignore scene texture outside the nominated backing in the
+            // segmentation grid. These cells never authorize current glyphs.
+            const bool insideDiscardedCard=!discardedBottomOnly ||
+                (sx>=discardedCard->left && sx<discardedCard->right &&
+                 sy>=discardedCard->top && sy<discardedCard->bottom);
+            if(!insideDiscardedCard) {
+                const size_t i=static_cast<size_t>(y)*w+x;
+                m_luma[i]=0;m_chroma[i]=512u|(512u<<16);
+                continue;
+            }
             if(share && m_sampledRows[y]) {
                 const size_t i=static_cast<size_t>(y)*w+x;
                 luma=m_rawLuma[i];u=m_rawChroma[i]&1023;v=m_rawChroma[i]>>16;
@@ -2606,7 +2688,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
 }
 
 SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
-    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration)
+    int top,int bottom,uint64_t sequence,uint64_t viewportGeneration,bool discardedBottomOnly)
 {
     ++m_diagnostics.analyzeCalls;
     SubtitleDiagnosticElapsedScope diagnosticElapsed{m_diagnostics.analyzeElapsedMs,m_diagnostics.analyzePeakMs};
@@ -2615,23 +2697,65 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         { ++m_diagnostics.rejectedInputs;Reset(); return {}; }
     if(source.generation!=m_generation || viewportGeneration!=m_viewport ||
         source.width!=m_width || source.height!=m_height || top!=m_top || bottom!=m_bottom ||
-        sequence<m_sequence)
+        sequence<m_sequence || discardedBottomOnly!=m_discardedBottomOnly)
     {
-        Reset(); m_generation=source.generation; m_viewport=viewportGeneration;
+        Reset(); m_discardedBottomOnly=discardedBottomOnly; m_generation=source.generation; m_viewport=viewportGeneration;
         m_width=source.width; m_height=source.height; m_top=top; m_bottom=bottom;
     }
     if(m_hasSequence && sequence==m_sequence) {++m_diagnostics.sameFrameReuses;return m_result;}
     m_sequence=sequence; m_hasSequence=true;
     m_sharedSampleCount=0;
+    if(discardedBottomOnly)
+    {
+        const int step=SamplingStep(source.width,source.height);
+        const auto card=FindDiscardedBottomCard(source,bottom,step);
+        if(!card.Valid())
+        {
+            m_discardedCard={};m_discardedSamples.clear();
+            m_inkSnapshot.reset();m_result={};
+            m_result.diagnosticReason="no-finite-backing-in-discarded-strip";
+            return m_result;
+        }
+        // Compare the entire current card grid, including space for a new
+        // line or glyph. Reuse grouping only. The worker still verifies the
+        // current glyph fringe and backing before presentation.
+        const int x=((card.left+step-1)/step)*step;
+        const int columns=(card.right-1-x)/step+1;
+        std::array<AnalysisLumaSample,960> row{};
+        m_currentDiscardedSamples.clear();
+        for(int y=((card.top+step-1)/step)*step;y<card.bottom;y+=step)
+        {
+            if(!source.SampleRow(y,x,step,row.data(),columns))
+            {
+                m_currentDiscardedSamples.clear();
+                break;
+            }
+            for(int col=0;col<columns;++col)
+            {
+                const auto& p=row[col];
+                m_currentDiscardedSamples.push_back(p.luma | (uint32_t(p.chromaU)<<10) | (uint32_t(p.chromaV)<<20));
+            }
+        }
+        if(m_result.detected && !m_currentDiscardedSamples.empty() &&
+            m_discardedCard.left==card.left && m_discardedCard.top==card.top &&
+            m_discardedCard.right==card.right && m_discardedCard.bottom==card.bottom &&
+            m_currentDiscardedSamples==m_discardedSamples)
+        {
+            ++m_result.observations;
+            return m_result;
+        }
+        m_discardedCard=card;
+        m_discardedSamples.swap(m_currentDiscardedSamples);
+    }
     if(m_optimizationMode==2)m_sampledRows.assign((source.height+SamplingStep(source.width,source.height)-1)/SamplingStep(source.width,source.height),0);
     SubtitleBoxRect box; int lines=0; std::array<uint64_t,16> signature{};
     // Preserve the established overlap detector. Only widen nomination when
     // that detector finds no valid cue; near-picture noise cannot displace it.
-    bool detected=Detect(source,top,bottom,box,lines,signature,0);
+    bool detected=Detect(source,top,bottom,box,lines,signature,0,discardedBottomOnly?&m_discardedCard:nullptr);
     bool topSearchComplete=!m_workLimit && m_topSearchComplete;
     bool bottomSearchComplete=!m_workLimit && m_bottomSearchComplete;
-    if(!detected && m_nearBarDistance>0) {
-        detected=Detect(source,top,bottom,box,lines,signature,m_nearBarDistance);
+    if(!detected && m_nearBarDistance>0 && !discardedBottomOnly) {
+        detected=Detect(source,top,bottom,box,lines,signature,m_nearBarDistance,nullptr);
         // The widened pass is the final configured search result. Do not let
         // a complete narrower attempt mask an incomplete widened scan.
         topSearchComplete=!m_workLimit && m_topSearchComplete;

@@ -8861,6 +8861,18 @@ void CVideoProcessorDlg::UpdateState()
 			RenderStop();
 			return;
 		}
+		if (m_alphaHostTransitionPending && !m_activeRendererIsDirectShow)
+		{
+			CString shaderStatus;
+			m_videoRenderer->GetRenderStallStatus(shaderStatus);
+			if (shaderStatus == TEXT("Preparing shaders..."))
+			{
+				// Keep the current HWND and ingress active until compilation
+				// no longer holds up retirement. The shader timer retries
+				// the restart with the latest requested fullscreen state.
+				return;
+			}
+		}
 		m_wantToRestartRenderer = false;
 		RenderStop();
 		return;
@@ -15154,9 +15166,15 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
+		if (m_alphaHostTransitionPending && m_wantToRestartRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			UpdateState();
+		}
         // Preparation is a column in the same profile banner, never a competing popup.
         CString status;
-        const bool canReport = m_videoRenderer && !m_wantToRestartRenderer &&
+        const bool canReport = m_videoRenderer &&
+            (!m_wantToRestartRenderer || m_alphaHostTransitionPending) &&
             (m_rendererState == RendererState::RENDERSTATE_STARTING ||
              m_rendererState == RendererState::RENDERSTATE_READY ||
              m_rendererState == RendererState::RENDERSTATE_RENDERING);

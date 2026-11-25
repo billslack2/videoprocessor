@@ -117,31 +117,13 @@ public:
 			std::vector<std::string> initializationDiagnostics;
 			const std::string logPath = GetExecutableLogFilePath();
 			GetSelectedLogPath() = logPath;
-			bool activeReady = false;
-			const bool logDirectoryReady =
-				DebugLogRetention::EnsureParentDirectory(
-					logPath, initializationDiagnostics);
-			if (logDirectoryReady && enhancedLogging)
-			{
-				// Enhanced mode is intentionally forensic: leave the current log
-				// and every previous trace artifact intact until the user cleans up.
-				std::ofstream active(logPath, std::ios::out | std::ios::app);
-				activeReady = active.is_open();
-				if (activeReady)
-					active.close();
-				else
-					initializationDiagnostics.push_back(
-						"Enhanced logging: cannot open active log '" + logPath + "'");
-			}
-			else if (logDirectoryReady)
-			{
-				auto rotation = DebugLogRetention::Rotate(logPath, retentionCount);
-				activeReady = rotation.activeReady;
-				initializationDiagnostics.insert(
-					initializationDiagnostics.end(),
-					rotation.diagnostics.begin(), rotation.diagnostics.end());
-			}
-			if (!activeReady)
+			if (!DebugLogRetention::EnsureParentDirectory(logPath, initializationDiagnostics))
+				return;
+
+			const auto rotation = DebugLogRetention::Rotate(logPath, retentionCount);
+			initializationDiagnostics.insert(
+				initializationDiagnostics.end(), rotation.diagnostics.begin(), rotation.diagnostics.end());
+			if (!rotation.activeReady)
 			{
 				// Never redirect diagnostics into an unrelated working directory.
 				GetLoggingEnabled().store(false, std::memory_order_release);
@@ -156,12 +138,11 @@ public:
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === VP LOG SESSION START ===\n";
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 					" | " << retentionDiagnostic << "\n";
+				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+					" | VP log rotation: indexed archives use vp.log.0 (newest), vp.log.1, and so on\n";
 				if (enhancedLogging)
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
-						" | Enhanced logging enabled: rotation disabled; live telemetry files enabled\n";
-				else
-					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
-						" | VP log rotation: indexed archives use vp.log.0 (newest), vp.log.1, and so on\n";
+						" | Enhanced logging enabled: live telemetry files enabled\n";
 				for (const std::string& diagnostic : initializationDiagnostics)
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 						" | " << diagnostic << "\n";

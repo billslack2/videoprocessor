@@ -5,6 +5,7 @@
 #include <vprenderer/DolbyVisionLuminancePolicy.h>
 #include <vprenderer/TemporalRenderer.h>
 #include <HdrOsdFormatting.h>
+#include <AnalysisFrame.h>
 #include <libplacebo/d3d11.h>
 #include <limits>
 #include <vector>
@@ -142,6 +143,139 @@ public:
         const auto neutral=CompactHdrPeak::Measure(source);
         Assert::AreEqual(2u,neutral.samples);
         Assert::AreEqual(0.5023f,neutral.averagePq,0.001f);
+    }
+
+    TEST_METHOD(CompactHdrPeakAcceptsEveryNativeRgbLayoutAndItsRenderConversion)
+    {
+        using Encoding=VideoFrameEncoding;
+        struct Layout { Encoding encoding; uint16_t black, gray, white; };
+        const Layout layouts[]={
+            {Encoding::ARGB_8BIT,0,128,255}, {Encoding::BGRA_8BIT,0,128,255},
+            {Encoding::R210,64,512,960}, {Encoding::R10b,64,502,940},
+            {Encoding::R10l,64,502,940}, {Encoding::R12B,0,2048,4095},
+            {Encoding::R12L,0,2048,4095},
+        };
+        for (const auto& layout : layouts) {
+            constexpr int width=8, height=2, stride=48;
+            auto bytes=std::make_shared<std::vector<uint8_t>>(stride*height,0xfe);
+            const auto packRow=[&](uint8_t* row, uint16_t red, uint16_t green, uint16_t blue) {
+                if (layout.white==4095) {
+                    uint8_t logical[36];
+                    for (int pair=0; pair<4; ++pair) {
+                        auto* p=logical+9*pair;
+                        p[0]=uint8_t(red); p[1]=uint8_t((red>>8)|(green<<4));
+                        p[2]=uint8_t(green>>4); p[3]=uint8_t(blue);
+                        p[4]=uint8_t((blue>>8)|(red<<4)); p[5]=uint8_t(red>>4);
+                        p[6]=uint8_t(green); p[7]=uint8_t((green>>8)|(blue<<4));
+                        p[8]=uint8_t(blue>>4);
+                    }
+                    for (int i=0; i<36; ++i)
+                        row[i]=logical[layout.encoding==Encoding::R12B ? i^3 : i];
+                } else {
+                    uint32_t word=0;
+                    switch (layout.encoding) {
+                    case Encoding::ARGB_8BIT: word=0xffu|red<<8|green<<16|blue<<24; break;
+                    case Encoding::BGRA_8BIT: word=0xff000000u|red<<16|green<<8|blue; break;
+                    case Encoding::R210: word=uint32_t(red)<<20|uint32_t(green)<<10|blue; break;
+                    default: word=uint32_t(red)<<22|uint32_t(green)<<12|uint32_t(blue)<<2; break;
+                    }
+                    for (int i=0; i<width*4; ++i) {
+                        int shift=i%4;
+                        if (layout.encoding==Encoding::R210 || layout.encoding==Encoding::R10b)
+                            shift=3-shift;
+                        row[i]=uint8_t(word>>(8*shift));
+                    }
+                }
+            };
+            packRow(bytes->data(),layout.black,layout.black,layout.black);
+            packRow(bytes->data()+stride,layout.gray,layout.gray,layout.gray);
+            AnalysisFrameInput input{};
+            input.nativeOwner=bytes;
+            input.nativeData=bytes->data();
+            input.nativeBytes=bytes->size();
+            input.nativeRowBytes=stride;
+            input.width=width;
+            input.height=height;
+            input.encoding=layout.encoding;
+            input.colorspace=ColorSpace::BT_2020;
+            const auto prepared=PrepareAnalysisFrame(input);
+            auto image=HdrFrame();
+            image.repr.sys=PL_COLOR_SYSTEM_RGB;
+            image.repr.levels=layout.black ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
+            Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
+            image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;
+            Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
+            image.repr.sys=PL_COLOR_SYSTEM_DOLBYVISION;
+            Assert::IsFalse(CompactHdrPeak::Supports(prepared.source,image));
+
+            const auto gray=CompactHdrPeak::Measure(prepared.source);
+            const float expected=layout.white==4095 ? 512.0f/1023.0f :
+                float(layout.gray-layout.black)/(layout.white-layout.black);
+            Assert::AreEqual(unsigned(width),gray.samples);
+            Assert::AreEqual(expected,gray.peakPq,0.0001f);
+            packRow(bytes->data()+stride,layout.black,layout.white,layout.black);
+            const auto green=CompactHdrPeak::Measure(prepared.source);
+            Assert::AreEqual(unsigned(width),green.samples);
+            Assert::AreEqual(10000.0f,green.peakRgbNits,0.02f);
+            Assert::AreEqual(pl_hdr_rescale(PL_HDR_NITS,PL_HDR_PQ,6780.0f),green.peakPq,0.0001f);
+        }
+    }
+
+    TEST_METHOD(CompactHdrPeakUsesHlgLuminanceAndSkipsAnHdrDestination)
+    {
+        auto image=HdrFrame();
+        image.color=pl_color_space_bt2020_hlg;
+        image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;
+        image.repr.levels=PL_COLOR_LEVELS_LIMITED;
+        auto hdrTarget=pl_color_space_hdr10;
+        hdrTarget.hdr.max_luma=1500.0f;
+        auto color=image.color;
+        Assert::IsFalse(CompactHdrPeak::InferHlgMeasurementColor(color,hdrTarget));
+        auto sdrTarget=pl_color_space_srgb;
+        sdrTarget.hdr.min_luma=0.05f;
+        sdrTarget.hdr.max_luma=100.0f;
+        color=image.color;
+        Assert::IsTrue(CompactHdrPeak::InferHlgMeasurementColor(color,sdrTarget));
+        Assert::AreEqual(sdrTarget.hdr.min_luma,color.hdr.min_luma,0.00001f);
+
+        // Neutral 75% HLG and encoded black, in a padded native v210 row.
+        const uint32_t white=64u+876u*3u/4u, black=64u, neutral=512u;
+        const uint32_t packed[]={
+            neutral|(white<<10)|(neutral<<20), white|(neutral<<10)|(white<<20),
+            neutral|(white<<10)|(neutral<<20), white|(neutral<<10)|(white<<20),
+            0u, neutral|(black<<10)|(neutral<<20), black|(neutral<<10)|(black<<20),
+            neutral|(black<<10)|(neutral<<20), black|(neutral<<10)|(black<<20), 0u,
+        };
+        auto owner=std::make_shared<std::vector<uint32_t>>(std::begin(packed),std::end(packed));
+        AnalysisFrameInput input{};
+        input.nativeOwner=owner;
+        input.nativeData=reinterpret_cast<const uint8_t*>(owner->data());
+        input.nativeBytes=owner->size()*sizeof(uint32_t);
+        input.nativeRowBytes=5*sizeof(uint32_t);
+        input.width=6;
+        input.height=2;
+        input.encoding=VideoFrameEncoding::V210;
+        input.colorspace=ColorSpace::BT_2020;
+        const auto prepared=PrepareAnalysisFrame(input);
+        Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
+        const auto hlg=CompactHdrPeak::Measure(prepared.source,color);
+        float reference[]={0.75f,0.75f,0.75f};
+        pl_color_linearize(&color,reference);
+        Assert::AreEqual(6u,hlg.samples);
+        Assert::AreEqual(reference[0]*PL_COLOR_SDR_WHITE,hlg.peakRgbNits,0.001f);
+        Assert::AreEqual(pl_hdr_rescale(PL_HDR_NITS,PL_HDR_PQ,hlg.peakRgbNits),hlg.averagePq,0.0001f);
+
+        const CompactHdrPeak::Decision decision{true,hlg,color.hdr.min_luma,color.hdr.max_luma};
+        Assert::IsTrue(CompactHdrPeak::ReplacesDetector(decision,image.color,sdrTarget));
+        Assert::IsFalse(CompactHdrPeak::ReplacesDetector(decision,image.color,hdrTarget));
+        sdrTarget.hdr.min_luma=0.1f;
+        Assert::IsFalse(CompactHdrPeak::ReplacesDetector(decision,image.color,sdrTarget));
+
+        image.color=pl_color_space_hdr10;
+        Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
+        Assert::AreEqual(0.75f,CompactHdrPeak::Measure(prepared.source).peakPq,0.001f);
+        image.color.transfer=PL_COLOR_TRC_BT_1886;
+        Assert::IsFalse(CompactHdrPeak::Supports(prepared.source,image));
     }
 
     TEST_METHOD(CompactHdrPeakStaysWithTheSelectedMotionPacket)

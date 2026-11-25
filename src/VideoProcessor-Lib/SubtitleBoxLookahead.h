@@ -46,13 +46,15 @@ struct SubtitleBarTrackingReference
 // scan. This record carries context and provenance, never bar/crop/ink proof.
 struct SubtitleInspectionCandidate {
     bool valid=false;
+    bool discardedBottomOnly=false;
     ActivePictureBounds bounds;
     ActivePictureFrameIdentity originIdentity;
     uint64_t policyGeneration=0,continuityGeneration=0,nativeGeometryRevision=0;
     bool Matches(const SubtitleInspectionCandidate& other) const {
         const auto& a=originIdentity;const auto& b=other.originIdentity;
         return valid==other.valid && (!valid ||
-            (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
+            (discardedBottomOnly==other.discardedBottomOnly &&
+             bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
              bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
              bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
              bounds.trustedBarAxes==other.bounds.trustedBarAxes &&
@@ -674,13 +676,15 @@ namespace SubtitleBoxLookahead
                 result.barEvidence=ExtractSubtitleBarEvidence(source);
                 result.barAuthority=result.barEvidence.available;
                 const int nativeTolerance=(std::max)(1,source.height/180);
-                const bool currentPhysicalBars=result.barAuthority && result.barEvidence.top>0 &&
+                const bool discardedBottomOnly = result.inspectionCandidateUsed &&
+                    sharedPicture.inspectionCandidate.discardedBottomOnly;
+                const bool currentPhysicalBars=!discardedBottomOnly && result.barAuthority && result.barEvidence.top>0 &&
                     result.barEvidence.bottom<source.height &&
                     std::abs(result.barEvidence.top-result.pictureTop)<=nativeTolerance &&
                     std::abs(result.barEvidence.bottom-result.pictureBottom)<=nativeTolerance;
-                scanner.Reset();
-                result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
-                    identity.acceptedSequence,identity.viewportGeneration);
+                if(!discardedBottomOnly)scanner.Reset();
+                result.text=scanner.Analyze(source,discardedBottomOnly?0:result.pictureTop,result.pictureBottom,
+                    identity.acceptedSequence,identity.viewportGeneration,discardedBottomOnly);
                 result.ink=scanner.InkSnapshot();
                 result.sharedProbeAttempted=true;
                 result.sharedProbeDetected=result.text.detected;
@@ -689,11 +693,12 @@ namespace SubtitleBoxLookahead
                 result.sharedProbeReason=result.text.diagnosticReason;
                 if(result.text.detected && !result.text.held && !result.text.workLimit) {
                     const auto proof=currentPhysicalBars ? SubtitleLocalGlyphProof{} :
-                        ProveCurrentSubtitleGlyphBacking(source,result.text,result.ink.get());
+                        ProveCurrentSubtitleGlyphBacking(source,result.text,result.ink.get(),64000,discardedBottomOnly);
                     result.glyphLocalProofReason=currentPhysicalBars ? "current-physical-source-support" : proof.reason;
                     result.glyphLocalMismatchX=proof.mismatchX;result.glyphLocalMismatchY=proof.mismatchY;
                     result.glyphLocalMismatchLuma=proof.mismatchLuma;
-                    if(currentPhysicalBars || proof.accepted) {
+                    if(currentPhysicalBars || (proof.accepted &&
+                        (!discardedBottomOnly || proof.verifiedBounds.top>=result.pictureBottom))) {
                         result.glyphLocalVerifiedBounds=currentPhysicalBars ? result.text.bounds : proof.verifiedBounds;
                         result.sharedNativePhysicalSupport=currentPhysicalBars;
                         result.glyphLocalBlackFloor=proof.blackFloor;
@@ -708,7 +713,8 @@ namespace SubtitleBoxLookahead
                         // Preserve geometry and probe diagnostics, never present
                         // an unverified local capture as subtitle/cleanup pixels.
                         result.text.detected=false;
-                        result.text.diagnosticReason=proof.reason;
+                        result.text.diagnosticReason=proof.accepted ?
+                            "cue-not-in-discarded-bottom-strip" : proof.reason;
                     }
                 }
             }

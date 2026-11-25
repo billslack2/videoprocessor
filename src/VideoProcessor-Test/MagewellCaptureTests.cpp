@@ -1852,7 +1852,7 @@ namespace Tests
             Assert::IsFalse(CompactHdrPeak::Supports(source,frame));
             frame.repr.levels=PL_COLOR_LEVELS_LIMITED;
             frame.color.transfer=PL_COLOR_TRC_HLG;
-            Assert::IsFalse(CompactHdrPeak::Supports(source,frame));
+            Assert::IsTrue(CompactHdrPeak::Supports(source,frame));
         }
 
 		TEST_METHOD(P210ToV210PreservesSixPixelGroup)

@@ -1214,7 +1214,12 @@ void testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault()
     require(!requireControl<QCheckBox>(window,"config.vprenderer.color.output_diagnostics")->isChecked(),"Loading preset enabled diagnostics");
     requireControl<QListWidget>(window,"config.vprenderer.color.profiles")->setCurrentRow(1);
     require(preset->currentData()=="proposed","Preset ignores effective diagnostic flags");
-    require(requireControl<QSpinBox>(window,"config.logging.debug_log_retention")->value()==10,"Invalid retention does not show runtime default");
+    auto* retention = requireControl<QSpinBox>(window, "config.logging.debug_log_retention");
+    require(retention->value() == 10, "Invalid retention does not show runtime default");
+    requireControl<QCheckBox>(window, "config.logging.debug")->setChecked(true);
+    require(retention->isEnabled(), "Enhanced logging disabled retention");
+    requireControl<QCheckBox>(window, "config.logging.enabled")->setChecked(false);
+    require(!retention->isEnabled(), "Disabled logging left retention editable");
     requireControl<QCheckBox>(window,"config.vprenderer.color.diagnostic_disable_compute")->setChecked(true);
     require(preset->currentData()=="custom","Edited flag did not derive Custom");
     requireControl<QCheckBox>(window,"config.vprenderer.color.diagnostic_disable_compute")->setChecked(false);
@@ -1490,9 +1495,9 @@ void testEveryPageRoundTrips()
     requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->setValue(25);
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(true);
-    require(!requireControl<QSpinBox>(window,
+    require(requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->isEnabled(),
-        "Log retention remained editable while enhanced logging was enabled");
+        "Log retention became disabled when enhanced logging was enabled");
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->setChecked(false);
     require(!requireControl<QSpinBox>(window,

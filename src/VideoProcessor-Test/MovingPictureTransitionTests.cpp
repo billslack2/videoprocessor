@@ -341,6 +341,59 @@ namespace Tests
             Assert::IsTrue(acquired>=5 && acquired<=6,
                 L"Retain the last valid anchor through an adjacent unknown proof, then require fresh directional motion before the geometry deadband.");
         }
+        TEST_METHOD(EstablishedOnsetRejoinsCaptionProofGapBeforeIntermediatePublication)
+        {
+            for (int returnedTop : {250, 254, 220})
+            {
+                CaptionMotionPixels pixels;
+                MotionSequence s;
+                const auto base = s.input.trustedGeometry;
+                const auto step = [&](int top, bool concealProof = false) {
+                    pixels.Draw(top, 2160-top);
+                    auto proof = pixels.Proof(s.identity);
+                    Assert::IsTrue(proof.accepted);
+                    s.input.evidence = proof.evidence;
+                    s.input.outwardCandidate = proof.candidate;
+                    s.input.sourceSequence = s.identity.acceptedSequence;
+                    s.input.presentation.action = VerticalBarPresentationAction::FIT;
+                    s.input.retention = EvaluateActivePicturePresentationRetention(pixels.Source(), base);
+                    ResampleActivePictureExpansionStrips(pixels.Source(), base, proof.candidate, s.input.retention);
+                    if (concealProof)
+                    {
+                        proof.accepted = false;
+                        s.input.evidence.classification = ActivePictureClassification::PROVISIONAL;
+                    }
+                    s.motion = ObserveSubtitleAssistedMovingPictureTransition(s.motion, s.identity,
+                        s.input, false, pixels.Source(), proof, 41, 9, SubtitleScriptHint::Latin);
+                    auto admission = EvaluateTransitionAdmission(s.input);
+                    ConstrainMovingPictureTransition(s.motion, admission);
+                    ++s.identity.acceptedSequence;
+                    ++s.identity.sourceFrameNumber;
+                    s.identity.captureTimestamp += 417083;
+                    return admission;
+                };
+                step(258); step(256); step(254);
+                Assert::IsTrue(s.motion.onsetPending && !s.motion.active);
+                step(252, true);
+                Assert::IsFalse(s.motion.onsetPending || s.motion.active);
+                Assert::AreEqual(uint32_t(1), s.motion.missingBarProofSamples);
+
+                const auto returned = step(returnedTop);
+                Assert::AreEqual(returnedTop == 250, s.motion.onsetPending);
+                Assert::IsFalse(s.motion.active, L"A proof gap does not count as a motion vote.");
+                if (returnedTop != 250) continue;
+
+                Assert::IsTrue(returned.observation.transitionDeferred);
+                Assert::AreEqual(base.top, s.motion.base.top);
+                Assert::AreEqual(base.bottom, s.motion.base.bottom);
+                step(250);
+                Assert::IsFalse(s.motion.active);
+                const auto continued = step(248);
+                Assert::IsTrue(s.motion.active && continued.observation.transitionDeferred);
+                Assert::AreEqual(base.top, s.motion.base.top);
+                Assert::AreEqual(base.bottom, s.motion.base.bottom);
+            }
+        }
         TEST_METHOD(UnknownSubtitleSeedCannotBridgeAnUnseenPictureJump)
         {
             CaptionMotionPixels pixels;MotionSequence s;

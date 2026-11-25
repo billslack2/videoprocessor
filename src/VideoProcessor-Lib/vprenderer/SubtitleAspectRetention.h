@@ -293,6 +293,8 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(!input.sourcePrepared || !input.observation || !input.accepted || !input.composition)
         return reject("source-not-prepared");
     const auto& observation=*input.observation;
+    if(observation.inspectionCandidateUsed && observation.sharedPicture.inspectionCandidate.discardedBottomOnly)
+        return reject("held-crop-caption-is-presentation-only");
     // Retained coordinates never originate physical AR or a semantic lease.
     // Exact prepared erasure may describe current output for the renderer's
     // already-selected matching native base, without renewing that authority.

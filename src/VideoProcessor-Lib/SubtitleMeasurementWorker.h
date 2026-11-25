@@ -70,6 +70,11 @@ public:
         m_scanner.SetOptimizationMode(key.optimizationMode);
         m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
+        const auto& candidate=key.sharedPicture.inspectionCandidate;
+        if(candidate.discardedBottomOnly &&
+            (!candidate.Matches(m_lastHeldCropCandidate) || key.discontinuity))
+            m_scanner.Reset();
+        m_lastHeldCropCandidate=candidate.discardedBottomOnly ? candidate : SubtitleInspectionCandidate{};
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
@@ -90,7 +95,8 @@ public:
             physical.text.detected=result.sharedProbeDetected && !result.sharedProbeWorkLimit;
             const int tolerance=(std::max)(1,source.height/180);
             if(physical.independentBarAnalysis &&
-                (std::abs(bars.top-result.pictureTop)>=tolerance ||
+                (key.sharedPicture.inspectionCandidate.discardedBottomOnly ||
+                 std::abs(bars.top-result.pictureTop)>=tolerance ||
                  std::abs(bars.bottom-result.pictureBottom)>=tolerance)) {
                 // Only changed native geometry needs another grouping pass.
                 // Stable cues reuse this exact source's already measured ink.
@@ -299,6 +305,7 @@ public:
     }
 private:
     SubtitleBoxDetector m_scanner;
+    SubtitleInspectionCandidate m_lastHeldCropCandidate;
     std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
     bool m_capturedDiagnostic=false;
@@ -926,6 +933,10 @@ public:
         m_diagnostics.expectedBottom=old.pictureBottom;
         if(key.sharedPicture.required) {
             m_diagnostics.sharedPictureMatches=key.sharedPicture.Matches(old.sharedPicture);
+            if ((key.sharedPicture.inspectionCandidate.discardedBottomOnly ||
+                    old.sharedPicture.inspectionCandidate.discardedBottomOnly) &&
+                !m_diagnostics.sharedPictureMatches)
+                return Reject("held-crop-caption-context-changed");
             m_diagnostics.sharedPictureCurrent=SubtitleBoxLookahead::HasSharedNativeGeometry(key);
             const int tolerance=(std::max)(1,source.height/180);
             const auto& oldBounds=old.inspectionCandidateUsed?old.sharedPicture.inspectionCandidate.bounds:old.sharedPicture.bounds;

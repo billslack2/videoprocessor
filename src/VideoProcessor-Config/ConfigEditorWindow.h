@@ -64,6 +64,7 @@ public:
     void selectPage(int index);
     void reveal();
     void showUpdates();
+    void exitApplication();
     void setTargetRefresh(std::function<void()> refresh);
     void setDiscoveredTargets(const QList<Target>& targets);
     bool awaitingTarget() const { return noTarget_; }
@@ -190,7 +191,6 @@ private:
     void showTargetSwitchOverlay(const QString& label);
     void hideTargetSwitchOverlay();
     void enterTargetAddress();
-    void exitApplication();
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
     void refreshActiveProfileIndicators();

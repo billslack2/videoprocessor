@@ -4917,15 +4917,11 @@ struct LibplaceboVideoRenderer::Impl
         return GetEnvironmentVariableA("VP_DIAG_PEAK_OFF_WITH_SUBTITLE_PANELS",value,sizeof(value))==1 &&
             value[0]=='1';
     }();
-    const bool compactPeakEnabled = [] {
-        char value[2]{};
-        return GetEnvironmentVariableA("VP_DIAG_COMPACT_HDR_PEAK",value,sizeof(value))==1 &&
-            value[0]=='1';
-    }();
     using CompactPeakWorker = OptionalAnalysisWorker<CompactHdrPeak::Measurement,1>;
     CompactPeakWorker compactPeakWorker;
     std::shared_ptr<CompactPeakWorker::Slot> compactPeakPending;
     CompactHdrPeak::Measurement compactPeakLatest;
+    float compactPeakHlgMin=0.0f, compactPeakHlgMax=0.0f;
     SceneDetector compactPeakSceneDetector;
     uint64_t compactPeakGeneration=0, compactPeakFormat=0, compactPeakEpoch=0;
     uint64_t compactPeakContext=0, compactPeakRequestContext=0;
@@ -5824,19 +5820,26 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
     CompactHdrPeak::Measurement UpdateCompactPeak(const AnalysisLumaSource& pixels,
+        const pl_color_space& measurementColor,
         uint64_t generation, uint64_t format, uint64_t epoch, uint64_t source,
         bool eligible, bool sceneBoundary, const pl_hdr_metadata* sourceLuminance, bool temporal)
     {
         constexpr uint64_t analysisIntervalMs=200, maximumAgeMs=500;
         const uint64_t now=GetTickCount64();
+        const bool hlg=eligible && measurementColor.transfer==PL_COLOR_TRC_HLG;
+        const float hlgMin=hlg ? measurementColor.hdr.min_luma : 0.0f;
+        const float hlgMax=hlg ? measurementColor.hdr.max_luma : 0.0f;
         if (eligible!=compactPeakWasEligible || generation!=compactPeakGeneration ||
-            format!=compactPeakFormat || epoch!=compactPeakEpoch || (eligible && sceneBoundary))
+            format!=compactPeakFormat || epoch!=compactPeakEpoch || (eligible && sceneBoundary) ||
+            hlgMin!=compactPeakHlgMin || hlgMax!=compactPeakHlgMax)
         {
             ++compactPeakContext;
             compactPeakGeneration=generation;
             compactPeakFormat=format;
             compactPeakEpoch=epoch;
             compactPeakWasEligible=eligible;
+            compactPeakHlgMin=hlgMin;
+            compactPeakHlgMax=hlgMax;
             compactPeakLatest={};
             compactPeakLatestMs=compactPeakNextMs=0;
         }
@@ -5863,7 +5866,7 @@ struct LibplaceboVideoRenderer::Impl
             try {
                 auto slot=std::make_shared<CompactPeakWorker::Slot>();
                 if (compactPeakWorker.Submit(slot,generation,source,source,
-                    [pixels] { return CompactHdrPeak::Measure(pixels); }))
+                    [pixels,measurementColor] { return CompactHdrPeak::Measure(pixels,measurementColor); }))
                 {
                     compactPeakPending=std::move(slot);
                     compactPeakRequestContext=compactPeakContext;
@@ -14205,12 +14208,33 @@ struct LibplaceboVideoRenderer::Impl
                 nlsGeometryGeneration,subtitlePixelIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                 subtitleMeasurementEnabled && automaticSourceCrop && configuredScreenActive && trustedNlsBarGeometry,
                 inspectionRecoveryBlocked || inwardCaptionProtected || currentFullRaster || nlsRequested || fixedCropAspectConfigured);
+            // Once the native bars have opened, the motion hold can still
+            // discard a newly arriving caption. Its base is only a search
+            // boundary. The worker must verify the current glyphs independently.
+            if (subtitleCutPasteTest && !temporalRenderer.Active() && automaticSourceCrop &&
+                configuredScreenActive && inspectionRecoveryBlocked && !inwardCaptionProtected &&
+                !nlsRequested && !fixedCropAspectConfigured &&
+                movingPictureTransition.identity.viewportGeneration==viewportRequestSerial)
+            {
+                auto heldCrop = NominateSubtitleInspectionCandidate(analysisSource,
+                    movingPictureTransition.base,frameGeneration,subtitlePixelIdentity.sourceFormatGeneration,
+                    ActivePictureAuthorityOrigin::NATIVE,ActivePictureClassification::BAR_CROP_TRUSTED,
+                    viewportRequestSerial+1,subtitlePixelIdentity,localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,true,false);
+                if (heldCrop.valid)
+                {
+                    heldCrop.discardedBottomOnly=true;
+                    subtitleSharedPicture.inspectionCandidate=heldCrop;
+                }
+            }
             if(subtitleSharedPicture.inspectionCandidate.valid && sourceSequence%120==0)
                 DebugLog::Log("SUBTITLE INSPECTION CANDIDATE: frame=%llu revision=%llu origin=%llu bounds=%d-%d shared_available=0 policy=%llu continuity=%llu domain=%llu viewport=%llu",
                     sourceSequence,nlsGeometryGeneration,subtitleSharedPicture.inspectionCandidate.originIdentity.acceptedSequence,
                     nlsGeometry.top,nlsGeometry.bottom,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                     subtitlePixelIdentity.analysisDomainKey,subtitlePixelIdentity.viewportGeneration);
         }
+
+        const auto heldCaptionSearch = subtitleSharedPicture.inspectionCandidate;
 
 		if (retiringTranslationFitInspection)
 		{
@@ -15210,7 +15234,9 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitlePaddingPolicy.glyphRelative?&displayBounds:nullptr,cueContinuation);
                 // Final placement must fit the AR owner's picture, not an
                 // independently sampled subtitle bar edge (which can differ by pixels).
-                const SubtitleBoxRect visiblePicture = configuredScreenActive && nlsGeometryAvailable &&
+                const SubtitleBoxRect visiblePicture = heldCaptionSearch.discardedBottomOnly
+                    ? SubtitleBoxRect{0,heldCaptionSearch.bounds.top,width,heldCaptionSearch.bounds.bottom}
+                    : configuredScreenActive && nlsGeometryAvailable &&
                     nlsGeometrySourceGeneration == frameGeneration
                     ? SubtitleBoxRect{nlsGeometry.left,nlsGeometry.top,nlsGeometry.right,nlsGeometry.bottom}
                     : SubtitleBoxRect{0,detectedMove.pictureTop,width,detectedMove.pictureBottom};
@@ -15778,13 +15804,23 @@ struct LibplaceboVideoRenderer::Impl
             subtitlePresentationPackets[sourceSequence%subtitlePresentationPackets.size()]={
                 subtitleCompositionSucceeded,frameGeneration,sourceSequence,relocatedSubtitle};
         CompactHdrPeak::Decision sourcePeak;
-        if (compactPeakEnabled)
         {
-            const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params &&
-                image.color.transfer==PL_COLOR_TRC_PQ;
-            const bool authored = alternate && CompactHdrPeak::HasSourceLuminance(image.color.hdr);
-            const bool measure = alternate && !CompactHdrPeak::HasAuthoredStatistics(image.color.hdr) &&
+            const bool alternate = !peakDetectionSweep && renderParams.peak_detect_params;
+            const bool authored = alternate && image.color.transfer==PL_COLOR_TRC_PQ &&
+                CompactHdrPeak::HasSourceLuminance(image.color.hdr);
+            auto measurementColor=image.color;
+            bool measure=alternate && !CompactHdrPeak::HasAuthoredStatistics(image.color.hdr) &&
                 CompactHdrPeak::Supports(analysisSource,image);
+            if (measure && measurementColor.transfer==PL_COLOR_TRC_HLG) {
+                // Resolve the same transfer and luminance contract as the later
+                // presentation target, before the current source packet is sealed.
+                auto peakTarget=configuredOutputColor;
+                if (renderTargetTransfer!=PL_COLOR_TRC_UNKNOWN)
+                    peakTarget.transfer=renderTargetTransfer;
+                LibplaceboRenderParameters::ApplyTargetLuminance(
+                    sdrInput,static_cast<float>(sdrTargetNits),static_cast<float>(sdrBlackNits),peakTarget);
+                measure=CompactHdrPeak::InferHlgMeasurementColor(measurementColor,peakTarget);
+            }
             const auto format=AlphaSourceFormatKey(state);
             auto peakScene=sceneResult;
             if (measure && !cadenceRepeat && !sceneDetectionEnabled && !automaticSourceCrop)
@@ -15801,7 +15837,11 @@ struct LibplaceboVideoRenderer::Impl
                     state.displayMode->FrameDuration(),true,&analysisSource});
             }
             sourcePeak.replaceDetector=authored || measure;
-            sourcePeak.measurement=UpdateCompactPeak(analysisSource,frameGeneration,format,
+            if (measure && measurementColor.transfer==PL_COLOR_TRC_HLG) {
+                sourcePeak.hlgMin=measurementColor.hdr.min_luma;
+                sourcePeak.hlgMax=measurementColor.hdr.max_luma;
+            }
+            sourcePeak.measurement=UpdateCompactPeak(analysisSource,measurementColor,frameGeneration,format,
                 pictureProcessingEpoch,sourceSequence,measure,
                 videoFrame.IsSourceDiscontinuity() || peakScene.hardCutCandidate ||
                     peakScene.hardCutConfirmed || peakScene.nearBlackEntry || peakScene.safeBoundary,
@@ -16277,9 +16317,10 @@ struct LibplaceboVideoRenderer::Impl
         const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
         AutoPictureAlignment::ActivePicture alignmentPicture{};
+        bool heldCaptionCropAdmitted = false;
 		auto configureViewport =
 			[this, &alignmentPicture, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
+             &heldCaptionCropAdmitted, viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
 			 subtitlePreviewMode,
@@ -16328,6 +16369,7 @@ struct LibplaceboVideoRenderer::Impl
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
 			source = subtitleComposedImage;
+            heldCaptionCropAdmitted = false;
             temporalPolicyNearBlackEnvelopeCandidate = false;
             temporalPolicyNearBlackEnvelopeFailOpen = false;
             temporalPolicyNearBlackEnvelopeBase = {};
@@ -18291,6 +18333,8 @@ releaseDriftBaseRetention =
 			cropAdmissionPreviouslyBlocked = admissionDecision.blocked;
 			cropPresentationAdmission = admissionDecision.state;
 			cropDecision = admissionDecision.presentation;
+            heldCaptionCropAdmitted = !admissionDecision.blocked && cropDecision.applyCrop &&
+                cropDecision.owner == AlphaSourceCrop::DecisionOwner::MOVING_PICTURE_HOLD;
             // Readiness observes an admitted pose, never an unowned FIT proposal.
             // It cannot grant crop authority or change ordinary playback policy.
             temporalPolicyStartupPoseQualified = !admissionDecision.blocked &&
@@ -19886,6 +19930,26 @@ releaseDriftBaseRetention =
             configureViewport(renderImage,target,configuredScreenActive,
                 subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
         }
+        if (heldCaptionSearch.discardedBottomOnly && subtitleCompositionSucceeded)
+        {
+            // A late viewport decision can release the hold. In that case the
+            // input already carries the caption at its original location.
+            const auto& crop=renderImage.crop;
+            const auto& destination=relocatedSubtitle.destination;
+            const bool placed=heldCaptionCropAdmitted && relocatedSubtitle.content.Valid() &&
+                relocatedSubtitle.content.top>=crop.y1 && destination.Valid() &&
+                destination.left>=crop.x0 && destination.top>=crop.y0 &&
+                destination.right<=crop.x1 && destination.bottom<=crop.y1;
+            if (!placed)
+            {
+                const auto finalCrop=renderImage.crop;
+                renderImage=image;
+                renderImage.crop=finalCrop;
+                subtitleCompositionSucceeded=false;
+            }
+            DEBUGLOG_ENHANCED("VP held-crop subtitle: source=%llu composed=%d held=%d",
+                sourceSequence,placed?1:0,heldCaptionCropAdmitted?1:0);
+        }
         const auto unalignedTargetCrop=target.crop;
         const auto unalignedLinearFallbackCrop=linearFallbackCrop;
         auto applyAutoPictureAlignment = [&]() {
@@ -20473,7 +20537,8 @@ releaseDriftBaseRetention =
                 lastPeakSweepPhase=peakSweepPhase;
             }
         }
-        const bool useDirectAlternatePeak=sourcePeak.replaceDetector && !temporalRenderer.Active();
+        const bool useDirectAlternatePeak=!temporalRenderer.Active() &&
+            CompactHdrPeak::ReplacesDetector(sourcePeak,renderImage.color,target.color);
         double drawWallMs=0.0;
         unsigned drawCalls=0;
         auto renderCallTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::RenderInvocation);
@@ -20497,7 +20562,7 @@ releaseDriftBaseRetention =
                 if (useDirectAlternatePeak) {
                     auto drawParams=parameters;
                     auto drawImage=source;
-                    CompactHdrPeak::Apply(sourcePeak,drawImage,drawParams);
+                    CompactHdrPeak::Apply(sourcePeak,drawImage,destination.color,drawParams);
                     drawn=temporalRenderer.Render(renderer,drawImage,destination,drawParams,pictureProcessingEpoch);
                 } else if (peakSweepPhase>=0) {
                     auto drawParams=parameters;

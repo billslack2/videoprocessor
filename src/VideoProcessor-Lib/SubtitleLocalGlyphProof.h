@@ -154,7 +154,7 @@ inline SubtitleLocalGlyphProof ProveLocalSubtitleGlyphBacking(
 // exhaustive native-pixel ownership mask for arbitrary shader extraction.
 inline SubtitleLocalGlyphProof ProveCurrentSubtitleGlyphBacking(
     const AnalysisLumaSource& source, const SubtitleBoxResult& text,
-    const SubtitleInkSnapshot* ink, size_t maxSamples=64000)
+    const SubtitleInkSnapshot* ink, size_t maxSamples=64000, bool allowNativeFringe=false)
 {
     SubtitleLocalGlyphProof result;
     if(!source.IsValid() || !text.detected || text.held || text.confirmationPending ||
@@ -282,6 +282,24 @@ inline SubtitleLocalGlyphProof ProveCurrentSubtitleGlyphBacking(
             bool adjacent=false;
             for(int dy=-1;dy<=1 && !adjacent;++dy)for(int dx=-1;dx<=1;++dx)
                 adjacent |= ownedAt(ix+dx,iy+dy);
+            if(allowNativeFringe && palette && !adjacent && pixel.luma<ink->inkFloor) {
+                // A complete caption card can contain a narrow antialiased
+                // stroke whose bright core falls between detector grid points.
+                // Check the actual neighboring pixels before rejecting its fringe.
+                for(int dx=1;dx<step && !adjacent;++dx)
+                    for(int sign : {-1,1}) {
+                        const int x=ix*step+sign*dx;
+                        bool withinLine=false;
+                        for(int line=0;line<text.lineCount;++line)withinLine|=inLine(x,y,line);
+                        if(!withinLine)continue;
+                        if(samples>=budget) {result.reason="local-work-limit";return result;}
+                        ++samples;
+                        AnalysisLumaSample core;
+                        adjacent|=source.Sample(x,y,core) && core.luma>=ink->inkFloor &&
+                            std::abs(int(core.chromaU)-ink->inkU)<=32 &&
+                            std::abs(int(core.chromaV)-ink->inkV)<=32;
+                    }
+            }
             if(!palette || !adjacent) {
                 result.reason="unowned-local-pixel-not-dark";
                 result.mismatchX=ix*step;result.mismatchY=y;result.mismatchLuma=pixel.luma;return result;
