@@ -289,6 +289,9 @@ struct ActivePictureObservation
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
     CurrentSpatialExpansionProof currentSpatialExpansion;
+    // The live caller verified the preceding source still measured the stable pose,
+    // the current pair is independently proved, and no gradual transition owns it.
+    bool currentAbruptInwardPair = false;
 
 };
 
