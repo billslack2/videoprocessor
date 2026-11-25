@@ -1075,8 +1075,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     migrateOutputDisplayProfiles();
     // Resolve legacy preset-dependent Auto before the editor separates fields
     // from their owning Rendering profile and its Quality value.
-    migrateProcessingToScaling();
-    migrateSeparatedRendererProfiles();
+    migrateSeparatedRendererProfiles(migrateProcessingToScaling());
     migrateUnifiedColorOutputProfiles();
     migrateCalibrationProfiles();
     migrateViewportZoomProfiles();
@@ -1716,8 +1715,7 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateOutputDisplayProfiles();
-	migrateProcessingToScaling();
-	migrateSeparatedRendererProfiles();
+	migrateSeparatedRendererProfiles(migrateProcessingToScaling());
 	migrateUnifiedColorOutputProfiles();
 	migrateCalibrationProfiles();
 	migrateViewportZoomProfiles();
@@ -2136,7 +2134,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
     }
 }
 
-void ConfigEditorWindow::migrateSeparatedRendererProfiles()
+void ConfigEditorWindow::migrateSeparatedRendererProfiles(const QStringList& movedScalingProfiles)
 {
     if (!configurationLoaded_ || !document_) return;
 
@@ -2177,6 +2175,7 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
         const QString suffix = renderingSection.compare(renderingRoot,
             Qt::CaseInsensitive) == 0 ? QStringLiteral("Default") :
             renderingSection.mid(renderingRoot.size() + 1);
+        bool movedSettings = movedScalingProfiles.contains(renderingSection, Qt::CaseInsensitive);
         for (const Transfer& transfer : transfers)
         {
             QStringList configuredKeys;
@@ -2227,20 +2226,34 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
                         "output_transport_gamma",
                         legacyGamma.toLocal8Bit().constData());
             }
+            movedSettings = true;
             migrated = true;
         }
 
+        if (!movedSettings || renderingSection == legacySections.front()) continue;
+        const auto original = savedSnapshot_.find(renderingSection.toStdString());
+        const auto& presetKeys = QualityProfileMigration::TonePresetKeys();
         bool hasRenderingSetting = false;
-        for (const auto& setting : document_->SectionSettings(
-            renderingSection.toStdString()))
+        for (const auto& setting : document_->SectionSettings(renderingSection.toStdString()))
         {
-            const QString key = QString::fromLocal8Bit(setting.first.c_str());
-            if (key.compare(QStringLiteral("shortcut"), Qt::CaseInsensitive) != 0 &&
-                key.compare(QStringLiteral("when"), Qt::CaseInsensitive) != 0)
+            const auto key = ConfigFile::NormalizeName(setting.first);
+            if (key == "shortcut" || key == "cycle_shortcut" || key == "when")
+                continue;
+            // Preset migration fills missing tone values before moving fields.
+            // Generated defaults must not turn a moved-only profile into a
+            // Rendering selector. Keep explicit presets and the default profile.
+            if (original != savedSnapshot_.end() &&
+                std::find(presetKeys.begin(), presetKeys.end(), key) != presetKeys.end())
             {
-                hasRenderingSetting = true;
-                break;
+                const bool originallyOwned = std::any_of(original->second.begin(), original->second.end(),
+                    [&](const auto& entry) {
+                        const auto originalKey = ConfigFile::NormalizeName(entry.first);
+                        return originalKey == key || originalKey == "quality";
+                    });
+                if (!originallyOwned) continue;
             }
+            hasRenderingSetting = true;
+            break;
         }
         if (!hasRenderingSetting &&
             document_->RemoveSection(renderingSection.toStdString()))
@@ -2253,9 +2266,9 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
     }
 }
 
-void ConfigEditorWindow::migrateProcessingToScaling()
+QStringList ConfigEditorWindow::migrateProcessingToScaling()
 {
-    if (!configurationLoaded_ || !document_) return;
+    if (!configurationLoaded_ || !document_) return {};
 
     // Quality is retired and debanding, dithering and dither depth are Scaling
     // settings now. VP's loader applies the same plan in memory, so the editor
@@ -2273,7 +2286,7 @@ void ConfigEditorWindow::migrateProcessingToScaling()
             values[ConfigFile::NormalizeName(setting.first)] = setting.second;
     }
     const auto plan = QualityProfileMigration::Build(sections, order);
-    if (plan.Empty()) return;
+    if (plan.Empty()) return {};
     // A Scaling copy keeps its Rendering profile's spelling.
     const std::string scalingPrefix = "vprenderer.scaling.";
     for (const auto& section : plan.newSections)
@@ -2288,11 +2301,22 @@ void ConfigEditorWindow::migrateProcessingToScaling()
     for (const auto& item : plan.sets)
         document_->SetKnown(originalNames.at(std::get<0>(item)), std::get<1>(item).c_str(),
             std::get<2>(item));
+    QStringList movedProfiles;
     for (const auto& item : plan.removals)
+    {
         document_->RemoveKnown(originalNames.at(item.first), item.second.c_str(), true);
+        if (item.first.rfind("vprenderer.", 0) != 0 ||
+            (!QualityProfileMigration::ProcessingKey(item.second) && item.second != "chroma_upscaler"))
+            continue;
+        const auto suffix = item.first.substr(std::string("vprenderer.").size());
+        const auto original = QString::fromLocal8Bit(originalNames.at(item.first).c_str());
+        if (originalNames.count(scalingPrefix + suffix) && !movedProfiles.contains(original))
+            movedProfiles.push_back(original);
+    }
     document_->requiresMigrationBackup = document_->existedAtLoad;
     dirty_ = true;
     hasPendingMigrations_ = true;
+    return movedProfiles;
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -3606,11 +3630,17 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
                 .arg(section, QString::fromStdString(expected)));
             fields.push_back(controlName(section, QStringLiteral("sdr_target_nits")));
         }
-        const QString black = inheritedLuminance(QStringLiteral("sdr_black_nits"));
+        const auto effectiveLuminance = [&](const QString& key) {
+            const QString configured = value(section, key).trimmed();
+            if (!configured.isEmpty() || !frozenRenderingValue_) return configured;
+            return frozenRenderingValue_(section, key);
+        };
+        const QString black = effectiveLuminance(QStringLiteral("sdr_black_nits"));
         if (black.isEmpty() || black.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0)
             continue;
-        QString effectiveWhite = inheritedLuminance(QStringLiteral("sdr_target_nits"));
-        if (effectiveWhite.isEmpty()) effectiveWhite = QStringLiteral("203");
+        QString effectiveWhite = effectiveLuminance(QStringLiteral("sdr_target_nits"));
+        if (effectiveWhite.isEmpty())
+            effectiveWhite = RenderingBuiltInDefault(QStringLiteral("sdr_target_nits"));
         bool whiteOk = false, blackOk = false;
         const double whiteNits = effectiveWhite.toDouble(&whiteOk);
         const double blackNits = black.toDouble(&blackOk);
@@ -6913,6 +6943,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // The plan reads this page's widgets; skip it once the page is gone.
         // What the fill on opening wrote: how many settings, in which profiles.
         auto filled = std::make_shared<std::pair<int, QStringList>>();
+        frozenRenderingValue_ = [plan = renderingFreezePlan, page = QPointer<QLabel>(noInheritanceNote)](
+            const QString& section, const QString& key) -> QString {
+            if (!page) return {};
+            for (const RenderingFreezeWrite& write : plan())
+                if (write.section == section && write.key == key) return write.value;
+            return {};
+        };
         freezeRenderingProfiles_ = [this, plan = renderingFreezePlan, page = QPointer<QLabel>(noInheritanceNote), filled] {
             if (!page) return;
             for (const RenderingFreezeWrite& write : plan())
@@ -7197,7 +7234,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             return request;
         };
         const auto toneRequest = [this, inheritedTone, toneDrag, plannedTone, plan = renderingFreezePlan, requestFrom] {
-            *plannedTone = plan ? plan() : std::vector<RenderingFreezeWrite>{};
+            if (toneDrag->first.empty())
+                *plannedTone = plan ? plan() : std::vector<RenderingFreezeWrite>{};
             auto request = requestFrom([&](const char* name) {
                 return !toneDrag->first.empty() && toneDrag->first == name ?
                     toneDrag->second.trimmed() : inheritedTone(name);
@@ -7668,7 +7706,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             classicSection->setVisible(mode==QStringLiteral("classic"));
             appearanceSection->setVisible(mode==QStringLiteral("generated_gray") || mode==QStringLiteral("black"));
             reconstructionSection->setVisible(mode==QStringLiteral("generated_gray"));
-            commonForm->setRowVisible(scriptHint,mode!=QStringLiteral("off"));
+            commonForm->setRowVisible(scriptHint->parentWidget(), mode != QStringLiteral("off"));
             commonForm->setRowVisible(offset->parentWidget(),mode!=QStringLiteral("off"));
             commonForm->setRowVisible(offZoomHold->parentWidget(),mode==QStringLiteral("off"));
         };
