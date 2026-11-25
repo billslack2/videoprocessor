@@ -2,9 +2,23 @@
 
 ## Status
 
+
 In Progress
 
-Source branch `trial/vp0240-libplacebo-histogram` in `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125` starts at verified beta `d5f69645f4c818559d627d68eced177489c159d5`. Building the opt-in original histogram reference and full-rate delayed control first. Astra verified that delayed libplacebo on D3D11 can still force readback. True half cadence requires retaining native state and polling readback without waiting. No live evidence yet.
+The opt-in x64 Release comparison is staged locally. The source branch `trial/vp0240-libplacebo-histogram` in `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125` starts at verified `v2.0.10-beta` tip `d5f69645f4c818559d627d68eced177489c159d5`. The original detector reference and delayed mode are at `48aa98fdb65ccbfb5c25c2c6b04b8f44abda4d35` with bundled libplacebo `a89f8241bfd6c5f5affaa9c3ce39fa2b1767b8c7`. The direct-render half-rate prototype is at `987fdc0cf95add3266f699234462a7065ca5d2ac` with the local libplacebo fork commit `33f88fe42b0f9f62ab13e12fbe2fce616c868dd9`.
+
+## Review and decision
+
+Astra verified that `allow_delayed` can still force D3D11 readback and that disabling per-draw peak parameters resets the measured state. The first trial compares both native modes with the shipped DLL. The second uses one staging copy and a nonflushing readiness query with nonblocking map. It preserves the native histogram, ROI, percentile, smoothing in elapsed source frames, and per-field authored Dolby Vision precedence. It attempts every source through 30 fps and alternate sources above 30 fps. The bounded result age is one source frame at full cadence or two at half cadence. The renderer uses native authored or static handling when a compatible measurement is unavailable. Direct progressive rendering is the half-cadence scope. Smooth Motion and interlaced temporal passes use the native reference until per-packet source scheduling is added.
+
+Keep the half-resolution advanced-subtitle variant gated on full-resolution timing and image evidence. Linear-light 2x2 downscale can attenuate small HDR highlights and can increase result age when staged. A fused reduction that retains each sample's original contribution would preserve the native distribution but needs separate timing qualification. Record worst-case stage and full critical-path timing, distinct source presentation gaps and producing/consuming source IDs before promoting any change.
+
+## Trial evidence
+
+- Both VP builds succeeded as x64 Release with pinned MSVC 14.44.35207. The staged Beta plugin API 34 and paired libplacebo DLL loaded for each build. `BUILD-IDENTITY.json` in each trial folder records the payload hashes.
+- All 15 libplacebo Release tests passed, including the D3D11 fixture for histogram parity, half and full cadence, cut and ROI reset, and stale-result expiry.
+- The 31 focused VP native HDR, dependency and Smooth Motion regressions passed on each isolated libplacebo DLL. Broader native suite runs did not finish in this qualification. The earlier beta baseline had 23 already reproduced failures (22 AR and one LUT), so there is no new full-suite result or claim of clearing those cases.
+- The matching live HDMI comparison, advanced-subtitle half-resolution experiment, and worst-case render and presentation measurements remain open. The active install was untouched. The isolated launchers and verification artifacts are under `E:\codex\videoprocessor\vp0240-hdr-histogram-20261125\artifacts`.
 
 ## Context
 
