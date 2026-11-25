@@ -931,6 +931,32 @@ namespace VideoProcessorTest
 					reacquired.decisionLatencyFrames));
 		}
 
+        TEST_METHOD(AbruptInwardReturnNeedsAnAdjacentProvedPairAndLargeMovementOnBothEdges)
+        {
+            for (int scenario = 0; scenario < 5; ++scenario) {
+                auto inner = LoggedScopeBounds();
+                auto outer = ImaxBounds();
+                outer.top = 68;
+                outer.bottom = scenario == 3 ? inner.bottom + 32 : 2092;
+                outer.aspectRatio = 3840.0 / (outer.bottom - outer.top);
+                ActivePictureTransitionModel model;
+                auto frame = Establish(model, inner);
+                ExpectOrdinaryTrustedCut(model, outer, frame, 23.976);
+                ActivePictureObservation obs{inner,frame,true,ActivePictureClassification::BAR_CROP_TRUSTED,23.976};
+                obs.currentAbruptInwardPair = scenario != 1;
+                obs.axisEvidence.vertical.state = ActivePictureAxisState::TRUSTED_BARS;
+                obs.axisEvidence.vertical.scanComplete = scenario != 2;
+                obs.transitionDeferred = scenario == 4;
+                const auto decision = model.Observe(obs);
+                Assert::IsTrue(decision.publish == (scenario == 0));
+                if (decision.publish) {
+                    Assert::IsTrue(decision.knownTrustedGeometryReacquired);
+                    Assert::IsTrue(decision.bounds.SameRectangleAndAxes(inner));
+                    Assert::IsTrue(decision.decisionLatencyFrames == 0);
+                }
+            }
+        }
+
 		TEST_METHOD(RecentTrustedGeometryRecursAcrossThreeAspectModes)
 		{
 			// Feature content commonly alternates among a small set of real modes.

@@ -12012,6 +12012,13 @@ struct LibplaceboVideoRenderer::Impl
                 captionLogicalAcquisitionBlocked && !inwardRecovery);
 			latestActivePictureObservationSupportsCrop = false;
 			latestCropSamplingReaffirmed = false;
+            const bool precedingSourceAtStablePose = frameNumber > 1 &&
+                latestActivePictureEvidenceFrame == frameNumber - 1 &&
+                latestActivePictureEvidenceAvailable && hadCurrentTrustedCropGeometry &&
+                nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                (latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+                 latestActivePictureEvidenceClassification == ActivePictureClassification::FULL_RASTER_TRUSTED) &&
+                latestActivePictureEvidenceBounds.SameRectangleAndAxes(nlsGeometry);
 			latestActivePictureEvidenceAvailable = evidence.available;
 			latestActivePictureEvidenceClassification = evidence.available
 				? evidence.classification
@@ -12339,7 +12346,15 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(bufferedExpansion->decision.proofFrameCount),
 					bufferedExpansionReady ? 1 : 0, bufferedExpansion->relativeContrast ? 1 : 0,
                     currentQualifiedPair ? 1 : 0, currentRelativeContrast.reason);
-			const auto observation = admission.observation;
+            auto observation = admission.observation;
+            observation.currentAbruptInwardPair = precedingSourceAtStablePose &&
+                !cadenceRepeat && !sourceDiscontinuity && !nearBlackAcquisitionBlocked &&
+                !movingPictureOnset && !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                !admission.deferPresentation && !admission.deferOutward &&
+                (captionBackedStrictProofCurrent ||
+                 (evidence.axisEvidence.verticalCropProfileEvaluated &&
+                  evidence.axisEvidence.verticalCropProfileClean));
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
 			outwardPictureConfirmation = admission.outward.state;

@@ -1350,6 +1350,21 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.decisionLatencyFrames =
 			observation.frameNumber >= m_firstContradictoryFrame ?
 			observation.frameNumber - m_firstContradictoryFrame : 0;
+        // A one-source jump on both edges is distinct from a gradual ramp.
+        // Require each edge to move at least 1/16 of the native raster height.
+        const auto& current = observation.bounds;
+        const int largeStep = (current.rasterHeight + 15) / 16;
+        if (observation.currentAbruptInwardPair && !observation.transitionDeferred &&
+            observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            observation.axisEvidence.vertical.scanComplete &&
+            observation.axisEvidence.vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+            current.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            current.left == 0 && current.right == current.rasterWidth &&
+            m_stable.left == current.left && m_stable.right == current.right &&
+            m_stable.rasterHeight == current.rasterHeight && current.rasterHeight > 0 &&
+            current.top - m_stable.top >= largeStep && m_stable.bottom - current.bottom >= largeStep &&
+            SameBounds(current, recentTrustedBounds))
+            return CommitCandidate(observation, "abrupt current paired bars reacquired on cut");
 		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
 			return CommitCandidate(observation, "recent trusted geometry reacquired");
 		return decision;

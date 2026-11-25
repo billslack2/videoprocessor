@@ -20,6 +20,14 @@
 - Verify the active checkout, branch, remote, and worktree status before Git
   writes. Feature branches start from the current remote beta tip.
 
+## Aspect transition priorities
+
+On a distinct cut with independently proven, materially changed active-picture
+boundaries, prioritize correct framing on the first eligible source frame.
+Keep gradual-motion protection for ongoing ramps. Regress abrupt return to
+scope with captions alongside Mandalorian gradual expansion and Eternals
+hard-cut expansion. Verify the submitted crop and caption preservation.
+
 ## Stories
 
 - Stories are tracked in `C:\Users\bslac\vp\story-tracker\stories`.
