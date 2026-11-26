@@ -1,14 +1,11 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/FrameHdrStatus.h>
-#include <vprenderer/CompactHdrPeak.h>
 #include <vprenderer/DolbyVisionLuminancePolicy.h>
 #include <vprenderer/TemporalRenderer.h>
 #include <HdrOsdFormatting.h>
-#include <AnalysisFrame.h>
 #include <libplacebo/d3d11.h>
 #include <limits>
-#include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace {
@@ -43,7 +40,7 @@ struct HdrGpuFixture
             pl_renderer_destroy(&renderer);pl_d3d11_destroy(&device);}
     }
     void Capture(uint64_t sequence,float gray,float maxCll,
-        const CompactHdrPeak::Decision& peak={}, bool complete=false)
+        bool complete=false)
     {
         MotionConfig::Settings settings;settings.smoothMotion="always";settings.deinterlace="off";settings.mixer="oversample";
         temporal.Begin(settings,24,60,false,0,1,sequence,double(sequence-1)/24.0,false,complete);
@@ -53,7 +50,7 @@ struct HdrGpuFixture
             Assert::IsTrue(temporal.CaptureCompleteComposition(device->gpu,input,sequence,false));
         else
             Assert::IsTrue(temporal.Capture(device->gpu,input,sequence));
-        Assert::IsTrue(temporal.AnnotateHdrSource(sequence,input,{},peak));
+        Assert::IsTrue(temporal.AnnotateHdrSource(sequence,input));
     }
     RendererHdrStatus Draw(double pts,uint64_t epoch=7)
     {
@@ -69,261 +66,18 @@ struct HdrGpuFixture
 namespace Tests {
 TEST_CLASS(HdrStatusTests) {
 public:
-    TEST_METHOD(CompactHdrPeakMeasuresPqGrayAndExcludesEncodedBlack)
-    {
-        constexpr int width=64, height=32, rowBytes=width*4+16;
-        std::vector<uint8_t> pixels(rowBytes*height);
-        for (int y=8; y<height-8; ++y)
-            for (int x=0; x<width; ++x)
-                for (int channel=0; channel<3; ++channel)
-                    pixels[y*rowBytes+x*4+channel]=128;
-
-        AnalysisLumaSource source;
-        source.data=pixels.data();
-        source.dataBytes=pixels.size();
-        source.width=width;
-        source.height=height;
-        source.rowBytes=rowBytes;
-        source.format=AnalysisLumaFormat::NativeRgb;
-        source.encoding=VideoFrameEncoding::BGRA_8BIT;
-        source.range=AnalysisLumaRange::Full;
-
-        const auto measured=CompactHdrPeak::Measure(source);
-        Assert::AreEqual(static_cast<unsigned>(width*(height-16)),measured.samples);
-        Assert::AreEqual(128.0f/255.0f,measured.peakPq,0.0001f);
-        Assert::AreEqual(measured.peakPq,measured.averagePq,0.0001f);
-        Assert::AreEqual(pl_hdr_rescale(PL_HDR_PQ,PL_HDR_NITS,128.0f/255.0f),
-            measured.peakRgbNits,0.001f);
-        source.range=AnalysisLumaRange::Limited;
-        Assert::AreEqual(0u,CompactHdrPeak::Measure(source).samples);
-    }
-
-    TEST_METHOD(CompactHdrPeakDecodesLimitedPlanarAndPackedYuv)
-    {
-        constexpr int width=32, height=16;
-        for (bool verticalSubsampling : {false,true}) {
-            const int lumaCount=width*height;
-            std::vector<uint16_t> yuv(lumaCount+width*(verticalSubsampling?height/2:height),512u<<6);
-            for (int y=0; y<height; ++y)
-                std::fill_n(yuv.begin()+y*width,width,(y<4?64u:502u)<<6);
-
-            AnalysisLumaSource source;
-            source.data=reinterpret_cast<const uint8_t*>(yuv.data());
-            source.dataBytes=yuv.size()*sizeof(uint16_t);
-            source.width=width;
-            source.height=height;
-            source.rowBytes=source.chromaRowBytes=width*sizeof(uint16_t);
-            source.format=verticalSubsampling?AnalysisLumaFormat::P010:AnalysisLumaFormat::P210;
-            source.encoding=verticalSubsampling?VideoFrameEncoding::P010:VideoFrameEncoding::P210;
-            source.range=AnalysisLumaRange::Limited;
-            source.colorspace=ColorSpace::BT_2020;
-
-            const auto neutral=CompactHdrPeak::Measure(source);
-            Assert::AreEqual(static_cast<unsigned>(width*(height-4)),neutral.samples);
-            Assert::AreEqual(0.5f,neutral.averagePq,0.001f);
-            for (size_t i=lumaCount; i<yuv.size(); i+=2) yuv[i]=736u<<6;
-            const auto blue=CompactHdrPeak::Measure(source);
-            Assert::IsTrue(blue.peakRgbNits>3.0f*neutral.peakRgbNits);
-            Assert::IsTrue(blue.peakPq>neutral.peakPq);
-            source.colorspace=ColorSpace::REC_709;
-            Assert::AreEqual(0u,CompactHdrPeak::Measure(source).samples);
-        }
-
-        const uint8_t packed[]={128,126,128,126,128,16,128,16};
-        AnalysisLumaSource source;
-        source.data=packed;
-        source.dataBytes=sizeof(packed);
-        source.width=2;
-        source.height=2;
-        source.rowBytes=4;
-        source.format=AnalysisLumaFormat::NativeYuv422;
-        source.encoding=VideoFrameEncoding::UYVY;
-        source.range=AnalysisLumaRange::Limited;
-        source.colorspace=ColorSpace::BT_2020;
-        const auto neutral=CompactHdrPeak::Measure(source);
-        Assert::AreEqual(2u,neutral.samples);
-        Assert::AreEqual(0.5023f,neutral.averagePq,0.001f);
-    }
-
-    TEST_METHOD(CompactHdrPeakAcceptsEveryNativeRgbLayoutAndItsRenderConversion)
-    {
-        using Encoding=VideoFrameEncoding;
-        struct Layout { Encoding encoding; uint16_t black, gray, white; };
-        const Layout layouts[]={
-            {Encoding::ARGB_8BIT,0,128,255}, {Encoding::BGRA_8BIT,0,128,255},
-            {Encoding::R210,64,512,960}, {Encoding::R10b,64,502,940},
-            {Encoding::R10l,64,502,940}, {Encoding::R12B,0,2048,4095},
-            {Encoding::R12L,0,2048,4095},
-        };
-        for (const auto& layout : layouts) {
-            constexpr int width=8, height=2, stride=48;
-            auto bytes=std::make_shared<std::vector<uint8_t>>(stride*height,0xfe);
-            const auto packRow=[&](uint8_t* row, uint16_t red, uint16_t green, uint16_t blue) {
-                if (layout.white==4095) {
-                    uint8_t logical[36];
-                    for (int pair=0; pair<4; ++pair) {
-                        auto* p=logical+9*pair;
-                        p[0]=uint8_t(red); p[1]=uint8_t((red>>8)|(green<<4));
-                        p[2]=uint8_t(green>>4); p[3]=uint8_t(blue);
-                        p[4]=uint8_t((blue>>8)|(red<<4)); p[5]=uint8_t(red>>4);
-                        p[6]=uint8_t(green); p[7]=uint8_t((green>>8)|(blue<<4));
-                        p[8]=uint8_t(blue>>4);
-                    }
-                    for (int i=0; i<36; ++i)
-                        row[i]=logical[layout.encoding==Encoding::R12B ? i^3 : i];
-                } else {
-                    uint32_t word=0;
-                    switch (layout.encoding) {
-                    case Encoding::ARGB_8BIT: word=0xffu|red<<8|green<<16|blue<<24; break;
-                    case Encoding::BGRA_8BIT: word=0xff000000u|red<<16|green<<8|blue; break;
-                    case Encoding::R210: word=uint32_t(red)<<20|uint32_t(green)<<10|blue; break;
-                    default: word=uint32_t(red)<<22|uint32_t(green)<<12|uint32_t(blue)<<2; break;
-                    }
-                    for (int i=0; i<width*4; ++i) {
-                        int shift=i%4;
-                        if (layout.encoding==Encoding::R210 || layout.encoding==Encoding::R10b)
-                            shift=3-shift;
-                        row[i]=uint8_t(word>>(8*shift));
-                    }
-                }
-            };
-            packRow(bytes->data(),layout.black,layout.black,layout.black);
-            packRow(bytes->data()+stride,layout.gray,layout.gray,layout.gray);
-            AnalysisFrameInput input{};
-            input.nativeOwner=bytes;
-            input.nativeData=bytes->data();
-            input.nativeBytes=bytes->size();
-            input.nativeRowBytes=stride;
-            input.width=width;
-            input.height=height;
-            input.encoding=layout.encoding;
-            input.colorspace=ColorSpace::BT_2020;
-            const auto prepared=PrepareAnalysisFrame(input);
-            auto image=HdrFrame();
-            image.repr.sys=PL_COLOR_SYSTEM_RGB;
-            image.repr.levels=layout.black ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
-            Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
-            image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;
-            Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
-            image.repr.sys=PL_COLOR_SYSTEM_DOLBYVISION;
-            Assert::IsFalse(CompactHdrPeak::Supports(prepared.source,image));
-
-            const auto gray=CompactHdrPeak::Measure(prepared.source);
-            const float expected=layout.white==4095 ? 512.0f/1023.0f :
-                float(layout.gray-layout.black)/(layout.white-layout.black);
-            Assert::AreEqual(unsigned(width),gray.samples);
-            Assert::AreEqual(expected,gray.peakPq,0.0001f);
-            packRow(bytes->data()+stride,layout.black,layout.white,layout.black);
-            const auto green=CompactHdrPeak::Measure(prepared.source);
-            Assert::AreEqual(unsigned(width),green.samples);
-            Assert::AreEqual(10000.0f,green.peakRgbNits,0.02f);
-            Assert::AreEqual(pl_hdr_rescale(PL_HDR_NITS,PL_HDR_PQ,6780.0f),green.peakPq,0.0001f);
-        }
-    }
-
-    TEST_METHOD(CompactHdrPeakUsesHlgLuminanceAndSkipsAnHdrDestination)
-    {
-        auto image=HdrFrame();
-        image.color=pl_color_space_bt2020_hlg;
-        image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;
-        image.repr.levels=PL_COLOR_LEVELS_LIMITED;
-        auto hdrTarget=pl_color_space_hdr10;
-        hdrTarget.hdr.max_luma=1500.0f;
-        auto color=image.color;
-        Assert::IsFalse(CompactHdrPeak::InferHlgMeasurementColor(color,hdrTarget));
-        auto sdrTarget=pl_color_space_srgb;
-        sdrTarget.hdr.min_luma=0.05f;
-        sdrTarget.hdr.max_luma=100.0f;
-        color=image.color;
-        Assert::IsTrue(CompactHdrPeak::InferHlgMeasurementColor(color,sdrTarget));
-        Assert::AreEqual(sdrTarget.hdr.min_luma,color.hdr.min_luma,0.00001f);
-
-        // Neutral 75% HLG and encoded black, in a padded native v210 row.
-        const uint32_t white=64u+876u*3u/4u, black=64u, neutral=512u;
-        const uint32_t packed[]={
-            neutral|(white<<10)|(neutral<<20), white|(neutral<<10)|(white<<20),
-            neutral|(white<<10)|(neutral<<20), white|(neutral<<10)|(white<<20),
-            0u, neutral|(black<<10)|(neutral<<20), black|(neutral<<10)|(black<<20),
-            neutral|(black<<10)|(neutral<<20), black|(neutral<<10)|(black<<20), 0u,
-        };
-        auto owner=std::make_shared<std::vector<uint32_t>>(std::begin(packed),std::end(packed));
-        AnalysisFrameInput input{};
-        input.nativeOwner=owner;
-        input.nativeData=reinterpret_cast<const uint8_t*>(owner->data());
-        input.nativeBytes=owner->size()*sizeof(uint32_t);
-        input.nativeRowBytes=5*sizeof(uint32_t);
-        input.width=6;
-        input.height=2;
-        input.encoding=VideoFrameEncoding::V210;
-        input.colorspace=ColorSpace::BT_2020;
-        const auto prepared=PrepareAnalysisFrame(input);
-        Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
-        const auto hlg=CompactHdrPeak::Measure(prepared.source,color);
-        float reference[]={0.75f,0.75f,0.75f};
-        pl_color_linearize(&color,reference);
-        Assert::AreEqual(6u,hlg.samples);
-        Assert::AreEqual(reference[0]*PL_COLOR_SDR_WHITE,hlg.peakRgbNits,0.001f);
-        Assert::AreEqual(pl_hdr_rescale(PL_HDR_NITS,PL_HDR_PQ,hlg.peakRgbNits),hlg.averagePq,0.0001f);
-
-        const CompactHdrPeak::Decision decision{true,hlg,color.hdr.min_luma,color.hdr.max_luma};
-        Assert::IsTrue(CompactHdrPeak::ReplacesDetector(decision,image.color,sdrTarget));
-        Assert::IsFalse(CompactHdrPeak::ReplacesDetector(decision,image.color,hdrTarget));
-        sdrTarget.hdr.min_luma=0.1f;
-        Assert::IsFalse(CompactHdrPeak::ReplacesDetector(decision,image.color,sdrTarget));
-
-        image.color=pl_color_space_hdr10;
-        Assert::IsTrue(CompactHdrPeak::Supports(prepared.source,image));
-        Assert::AreEqual(0.75f,CompactHdrPeak::Measure(prepared.source).peakPq,0.001f);
-        image.color.transfer=PL_COLOR_TRC_BT_1886;
-        Assert::IsFalse(CompactHdrPeak::Supports(prepared.source,image));
-    }
-
-    TEST_METHOD(CompactHdrPeakStaysWithTheSelectedMotionPacket)
+    TEST_METHOD(CompleteSubtitleMotionRetainsNativePeakDetection)
     {
         HdrGpuFixture gpu;
-        const CompactHdrPeak::Decision compact{true,{0.6f,0.3f,245.0f,10.0f,500}};
-        gpu.Capture(1,.25f,400,compact);
-        gpu.Capture(2,.9f,1800);
-        // A later measurement cannot change the second source once queued.
-        Assert::IsTrue(gpu.temporal.AnnotateHdrSource(2,gpu.input,{},compact));
-        const auto first=gpu.Draw(0);
-        Assert::AreEqual(uint64_t(1),first.sourceSequence);
-        Assert::AreEqual(400.0,first.maxCll);
-        Assert::IsFalse(first.peakDetectionEnabled || first.sceneValid);
-        const auto second=gpu.Draw(1.0/24.0);
-        Assert::AreEqual(uint64_t(2),second.sourceSequence);
-        Assert::IsTrue(second.peakDetectionEnabled);
-    }
-
-    TEST_METHOD(CompactHdrPeakCanSkipTheDetectorForCompleteMotionPackets)
-    {
-        HdrGpuFixture gpu;
-        const CompactHdrPeak::Decision compact{true,{0.6f,0.3f,245.0f,10.0f,500}};
-        gpu.Capture(1,.25f,400,compact,true);
-        gpu.Capture(2,.9f,1800,compact,true);
-        const auto selected=gpu.Draw(0);
+        gpu.Capture(1,.25f,400,true);
+        gpu.Capture(2,.9f,1800,true);
+        const auto status=gpu.Draw(0);
         Assert::IsTrue(gpu.temporal.CompleteCompositionSelected());
-        Assert::AreEqual(uint64_t(1),selected.sourceSequence);
-        Assert::IsFalse(selected.peakDetectionEnabled);
-    }
-
-    TEST_METHOD(CompactHdrPeakPreservesAuthoredAndStaticMetadata)
-    {
-        const CompactHdrPeak::Measurement measured{0.6f,0.3f,245.0f,10.0f,500};
-        auto frame=HdrFrame();
-        auto& hdr=frame.color.hdr;
-        hdr.max_pq_y=0.7f;
-        Assert::IsFalse(CompactHdrPeak::HasSourceLuminance(hdr));
-        Assert::IsFalse(CompactHdrPeak::Apply(measured,hdr));
-        hdr.avg_pq_y=0.4f;
-        Assert::IsTrue(CompactHdrPeak::HasSourceLuminance(hdr));
-        Assert::IsFalse(CompactHdrPeak::Apply(measured,hdr));
-        hdr.max_pq_y=hdr.avg_pq_y=0.0f;
-        Assert::IsTrue(CompactHdrPeak::Apply(measured,hdr));
-        Assert::AreEqual(1000.0f,hdr.max_luma);
-        Assert::AreEqual(0.6f,hdr.max_pq_y);
-        Assert::AreEqual(0.3f,hdr.avg_pq_y);
-        Assert::AreEqual(245.0f,hdr.scene_max[2]);
+        Assert::AreEqual(uint64_t(1),status.sourceSequence);
+        Assert::IsTrue(status.peakDetectionEnabled);
+        pl_hdr_metadata detected{};
+        Assert::IsTrue(pl_renderer_get_hdr_metadata(
+            gpu.temporal.ProcessingRenderer(gpu.renderer),&detected));
     }
 
     TEST_METHOD(UnknownStaticMetadataDoesNotPrintAsZero)
