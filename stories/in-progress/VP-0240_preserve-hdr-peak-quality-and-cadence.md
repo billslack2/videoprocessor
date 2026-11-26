@@ -89,6 +89,14 @@ Source d12c1c7da7ec93730d1772f547007d05d6727749 replaces the paused crop-recover
 
 The isolated x64 Release build at artifacts\Off Framing Test d12c1c7da7ec starts fullscreen with Off, Scope, High Quality HDR peak detection, Smooth Motion, and enhanced logging. Only this test copy removes the renderer-ready Classic hotkey while retaining the existing shader shortcut. It includes source, hashes, Config, and the output probe. All 125 payload hashes matched and Config rendered offline. All 78 focused native and D3D11 tests passed. The exact live HDMI replay remains pending.
 
+## November 26 Smooth Motion cue-boundary investigation
+
+The current experimental source worktree is `E:\codex\videoprocessor\vp0240-cue-boundary-20261126`, branch `trial/vp0240-cue-boundary`, based on native-HDR-restored beta `24635341653800ce78520e51b77741abf4e072f0`. This is an investigation with synthetic fixture changes. No production rendering change or subtitle performance optimization has been implemented. The current design proposal is `C:\Users\bslac\Documents\ChatGPT\Madve\VP-0240-smooth-motion-proposal.md`. The original libplacebo HDR detector and its settings remain the reference.
+
+A controlled SDR complete-packet fixture measured a midpoint value of 188/255 for an appearing subtitle and 188/188 for adjacent different subtitles, while a subtitle present in both packets remained 255. Fixture-known selected-only contributor output was also exercised as a proof of the mechanism. This is synthetic, fixture-known cue-boundary evidence, not authorization to infer real cue identity from geometry or timestamps. Current cue IDs can remain unchanged when lines are added. A real decision needs source-bound cue evidence and compatible picture and presentation context. HDR behavior, real cue changes and visual quality, motion continuity, and live HDMI remain unverified.
+
+In a five-second Reconstruction window ending 2026-11-25 23:26:31, after Smooth Motion settled and before the next display transition, the older d12 trial logged 120 subtitle worker jobs and 120 detector calls, with 125 detector search passes. Completed worker-job wall time averaged 16.535 ms and peaked at 21.022 ms. The detector/search timings are nested within that total. This establishes a repeated worker-analysis cost and does not establish blocking or the cause of a presentation spike. That run used the older compact/authored HDR path, so it does not measure the restored .11 HDR detector. No steady-cue shortcut has been qualified.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
