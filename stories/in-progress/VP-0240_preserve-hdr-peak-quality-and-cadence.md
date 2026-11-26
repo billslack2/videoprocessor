@@ -63,6 +63,14 @@ The source branch is `trial/vp0240-beta-direct-mix` under `E:\codex\videoprocess
 
 The D3D11 regression requires two actual mix contributors and checks the 10-bit output, border, translucent target overlay and fractional viewport across its tested output contracts. The exact HDMI replay, physical presentation gaps, and hardware timing remain open. Compare steady scope and the reported hard cut at 23.976 to 59.95 Hz, with cold and warmed caches measured separately. Keep HDR measurement attribution separate. The active installation was untouched.
 
+## Peak On output-stall telemetry
+
+The November 25 steady reconstruction review excluded fullscreen, resize, renderer, and profile transitions. The filtered sample saw zero skipped source IDs across 1,797 submissions and a 42.5 ms maximum submission gap. The earlier 88.5 ms cycle and 56.8 ms gap fell within the subtitle-profile settling periods. Only the Reconstruction launcher had a new Peak On log, so the matched Direct Mix comparison remains open.
+
+The opt-in x64 Release trial at source commit 82722243a5ad618c539ee4acf49d24d5a7224857 is under artifacts\Smooth Motion Peak On Telemetry 82722243a5ad in the existing source worktree. The three launchers keep High Quality HDR peak detection on. Reference and Direct Mix start with subtitles Off. Reconstruction adds advanced subtitles on the library mix path. All three packages include the corresponding Config app, source patch, exact binary hashes and matched libplacebo. Config started offline in all three.
+
+The trace correlates queue and render timings, source and output identities, transition epochs, cadence, capture and presentation timestamps, resolved GPU stage timings, and actual libplacebo peak dispatches. The shader time marked last available is asynchronous history. It can differ from the time of the specific output in the incident record. The focused GPU test verified contributor attribution in both manual and complete-composition paths and verified that reused packets dispatch no new peak analysis. A synthetic 42.5 ms gap retained preceding submissions and resolved the matching GPU sample. Matched live playback is pending.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
