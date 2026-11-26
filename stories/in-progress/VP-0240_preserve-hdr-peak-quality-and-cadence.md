@@ -79,6 +79,14 @@ The x64 Release pair at source commit 386160eb0a022f76c30fbb50a944b6c91926fdde i
 
 An isolated warm 3840x2160 RGBA16F history blit had a median GPU cost of 0.128 ms on the RTX 3080. The saving at live playback cadence and any change in the worst stalls still need a matched HDMI replay. Keep fullscreen and profile settling windows separate from steady playback.
 
+## Off fit handoff trial
+
+The November 25 Off playback log alternated between the native bottom edge at 1892 and the lower-bar fit ending at 2034. The native picture bounds stayed fixed. A controlled replay using the published beta policy at d5f69645f4c818559d627d68eced177489c159d5 reproduced the feedback loop with the existing two-source selection delay, without Direct Mix. Zero selection delay stayed stable.
+
+Source d12c1c7da7ec93730d1772f547007d05d6727749 replaces the paused crop-recovery experiment with a guard at the Smooth Motion submission handoff. A buffered Scope fallback can advance submission order while a previously submitted, same-context Off fit is active. It does not clear that fit or renew its evidence. Once the hold expires, normal release applies. True native AR publications and full-raster authority follow the existing path. The replay holds the fit after the previously buffered Scope frames drain.
+
+The isolated x64 Release build at artifacts\Off Framing Test d12c1c7da7ec starts fullscreen with Off, Scope, High Quality HDR peak detection, Smooth Motion, and enhanced logging. Only this test copy removes the renderer-ready Classic hotkey while retaining the existing shader shortcut. It includes source, hashes, Config, and the output probe. All 125 payload hashes matched and Config rendered offline. All 78 focused native and D3D11 tests passed. The exact live HDMI replay remains pending.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
