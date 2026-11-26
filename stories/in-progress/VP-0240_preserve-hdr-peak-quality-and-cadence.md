@@ -71,6 +71,14 @@ The opt-in x64 Release trial at source commit 82722243a5ad618c539ee4acf49d24d5a7
 
 The trace correlates queue and render timings, source and output identities, transition epochs, cadence, capture and presentation timestamps, resolved GPU stage timings, and actual libplacebo peak dispatches. The shader time marked last available is asynchronous history. It can differ from the time of the specific output in the incident record. The focused GPU test verified contributor attribution in both manual and complete-composition paths and verified that reused packets dispatch no new peak analysis. A synthetic 42.5 ms gap retained preceding submissions and resolved the matching GPU sample. Matched live playback is pending.
 
+## Reconstruction with the direct option
+
+The existing progressive Reconstruction path already blends to the display with libplacebo. VP separately prepares a full raster with the caption composited and copies it into temporal history. The new opt-in path retains the completed surface directly in a bounded pool and keeps it alive through current-source recapture or a late cue revision. The subtitle shader, HDR mapping, cue eligibility, crop policy and renderer dependency are unchanged.
+
+The x64 Release pair at source commit 386160eb0a022f76c30fbb50a944b6c91926fdde is under artifacts\Reconstruction Peak On AB 386160eb0a02 in the existing source worktree. Reference and Direct both start with Smooth Motion, Reconstruction, high-quality HDR peak detection and output-stall telemetry. The launch option is the only behavioral difference. The retained path reports complete_packet_library_mix_retained. Both Config apps opened offline and the 125 payload hashes matched in each folder. All 28 focused cases passed, including copied and retained output equivalence at the tested pixel and surface lifetime after history clear and late revision.
+
+An isolated warm 3840x2160 RGBA16F history blit had a median GPU cost of 0.128 ms on the RTX 3080. The saving at live playback cadence and any change in the worst stalls still need a matched HDMI replay. Keep fullscreen and profile settling windows separate from steady playback.
+
 ## Context
 
 - The 2.0 beta compact HDR path replaces libplacebo peak detection for eligible inputs. Its sparse grid and cadence change the peak estimate, and disabling the detector can bypass profile tuning, mastering-peak soft clipping, and measured Dolby Vision metadata fill-in.
