@@ -7,6 +7,15 @@ In Progress
 
 
 
+
+## Cross-mode stable framing coordination — November 27
+
+The user requires minor provisional edge jitter to preserve steady picture scale in Off, Classic, and Reconstruction while actual source-derived picture changes and captions remain responsive. The deployed Off-mode candidate is local checkpoint branch `checkpoint/off-framing-deployed-30fabd81`, source `30fabd8169637d86a5dae3277152f65c2e4c3792`, based on official v2.0.11-beta `24635341653800ce78520e51b77741abf4e072f0`. It is not a merged beta release. Worktree `E:/codex/videoprocessor/uneven-bar-regression-20261126` holds a separate uncommitted all-mode experiment. Its 337 focused tests pass, but a pure-policy test does not establish production renderer stability. Do not promote it without resolving skipped analysis cadence and caption/UI ownership.
+
+On November 27 the 30fabd81 Reconstruction trial recorded 72 submitted-geometry changes from 11:56 to 12:52 while its native snapshot remained `0,276-3840,1884`. At 12:48:32–12:48:35 the submitted source/target changed 27 times. Sources 98516–98523 include changing routed translation, so caption positioning and physical AR must be evaluated independently. The recording is `E:/codex/videoprocessor/uneven-bar-regression-20261126/artifacts/off-framing-fix-30fabd81/logs/vp.log`; native incident pixels and scanout are unavailable. Coordinate VP-0214, VP-0207 and VP-0231 caption and Ben-Hur fixes.
+
+The next trial must combine the Off fix with a safe all-mode change and exercise the producer, current-source caption evidence, crop admission, final fill, selected packet, and actual submitted source and destination across consecutive inputs, including skipped/late scans and source identity changes. Check Off, Classic and Reconstruction; active, absent and changing subtitles; volume/UI; real inward/outward hard cuts and ramps; asymmetric bars and compression noise; and first eligible transition frame. Current-source video must continue without waiting. Existing sampled strip checks do not prove all pixels clear. Unknown or stale optional evidence must retain a current-source pixel-preserving fallback. Record worst critical-path and presentation/source gaps. Exact-source/live acceptance remains open.
+
 ## Relative admission trial ready - 2026-11-18
 
 Committed/pushed535d7d8432f5dcf179483d62c1817ae05bb214ef on codex/ar-relative-admission-20261118, continuing user-selected54be4dad. Matching x64 Release host and both renderers staged at E:\codex\videoprocessor\ar-relative-test-535d7d84; embedded source pin, runtime records, hashes and app-local dependencies verified. Prior54be4dad/c0d04fc8 trials remain intact. Settings copied from54be4dad without edits. No player restart or deployment-folder change; user live acceptance pending.
